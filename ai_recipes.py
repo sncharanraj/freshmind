@@ -26,7 +26,7 @@ def format_pantry_for_ai(items):
     return "\n".join(formatted)
 
 
-def get_recipe_suggestions(preference=None):
+def get_recipe_suggestions(all_items=None, expiring_items=None, preferences=""):
     """
     Suggests 3 recipes using pantry items,
     prioritizing items expiring soonest.
@@ -37,15 +37,18 @@ def get_recipe_suggestions(preference=None):
     Returns:
         AI generated recipe suggestions as string
     """
-    all_items = get_all_items()
-    expiring_items = get_expiring_items(days=7)
+    # Use passed items, fallback to DB if not provided
+    if all_items is None:
+        all_items = get_all_items()
+    if expiring_items is None:
+        expiring_items = get_expiring_items(days=7)
 
     all_pantry_text = format_pantry_for_ai(all_items)
     expiring_text = format_pantry_for_ai(expiring_items)
 
     preference_text = ""
-    if preference:
-        preference_text = f"\nUser preference: {preference}"
+    if preferences:
+        preference_text = f"\nUser preferences: {preferences}"
 
     prompt = f"""
 You are a smart kitchen assistant helping reduce food waste.
