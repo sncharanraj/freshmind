@@ -1,6 +1,10 @@
 streamlit
-anthropic
+groq
 schedule
 plyer
 plotly
 requests
+pandas
+scikit-learn
+python-dotenv
+
