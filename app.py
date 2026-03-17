@@ -1,10 +1,12 @@
-# app.py — FreshMind v2.0
-# Complete upgrade with dark mode, animations, JS charts
+# app.py — FreshMind v3.0
+# Major upgrade: auth, lottie, barcode, family mode
 
 import streamlit as st
 from datetime import date, datetime
-import hashlib
 import streamlit.components.v1 as components
+import requests
+import json
+import base64
 from database import (
     create_tables, add_item, get_all_items,
     get_expiring_items, delete_item, update_item,
@@ -14,7 +16,11 @@ from ai_recipes import get_recipe_suggestions, chat_with_ai
 from notifier import check_and_notify
 from dashboard import render_dashboard
 from image_fetcher import get_food_image, get_emoji
-
+from auth import (
+    create_auth_tables, login_user, register_user,
+    get_all_users, create_family, join_family,
+    get_family_members, update_password
+)
 
 # ─────────────────────────────────────────
 # APP CONFIG
@@ -28,18 +34,22 @@ st.set_page_config(
 )
 
 create_tables()
+create_auth_tables()
 
 # ─────────────────────────────────────────
-# SESSION STATE DEFAULTS
+# SESSION STATE
 # ─────────────────────────────────────────
 
 defaults = {
     "logged_in":    False,
     "username":     "",
+    "user_data":    {},
     "dark_mode":    False,
     "chat_history": [],
     "edit_item_id": None,
-    "current_page": "🏠 Home"
+    "current_page": "🏠 Home",
+    "show_register": False,
+    "scan_result":  None,
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -52,33 +62,37 @@ for key, val in defaults.items():
 def get_theme():
     if st.session_state.dark_mode:
         return {
-            "bg":       "#0f0f1a",
-            "card":     "#1a1a2e",
-            "card2":    "#16213e",
-            "text":     "#ffffff",
-            "subtext":  "#a0a0b0",
-            "border":   "#2a2a4a",
-            "primary":  "#667eea",
-            "success":  "#43e97b",
-            "warning":  "#fa709a",
-            "danger":   "#f44336",
-            "gradient": "linear-gradient(135deg, #0f0f1a, #1a1a2e)",
-            "hero":     "linear-gradient(135deg, #1a1a2e, #16213e)",
+            "bg":        "#0f0f1a",
+            "card":      "#1a1a2e",
+            "card2":     "#16213e",
+            "text":      "#ffffff",
+            "subtext":   "#a0a0b0",
+            "border":    "#2a2a4a",
+            "primary":   "#667eea",
+            "success":   "#43e97b",
+            "warning":   "#fa709a",
+            "danger":    "#f44336",
+            "gradient":  "linear-gradient(135deg,#0f0f1a,#1a1a2e)",
+            "hero":      "linear-gradient(135deg,#1a1a2e,#16213e)",
+            "input_bg":  "#16213e",
+            "hover":     "#2a2a4a",
         }
     else:
         return {
-            "bg":       "#f0f4f8",
-            "card":     "#ffffff",
-            "card2":    "#f8fffe",
-            "text":     "#1a1a2e",
-            "subtext":  "#666680",
-            "border":   "#e0e8f0",
-            "primary":  "#667eea",
-            "success":  "#2e7d32",
-            "warning":  "#e65100",
-            "danger":   "#c62828",
-            "gradient": "linear-gradient(135deg, #f0f4f8, #e8f5e9)",
-            "hero":     "linear-gradient(135deg, #2e7d32, #66bb6a)",
+            "bg":        "#f0f4f8",
+            "card":      "#ffffff",
+            "card2":     "#f8fffe",
+            "text":      "#1a1a2e",
+            "subtext":   "#666680",
+            "border":    "#e0e8f0",
+            "primary":   "#667eea",
+            "success":   "#2e7d32",
+            "warning":   "#e65100",
+            "danger":    "#c62828",
+            "gradient":  "linear-gradient(135deg,#f0f4f8,#e8f5e9)",
+            "hero":      "linear-gradient(135deg,#2e7d32,#66bb6a)",
+            "input_bg":  "#ffffff",
+            "hover":     "#f0f4f8",
         }
 
 # ─────────────────────────────────────────
@@ -95,6 +109,8 @@ def inject_css():
             font-family: 'Poppins', sans-serif !important;
             transition: background 0.3s, color 0.3s;
         }}
+
+        /* ── App Background ── */
         .stApp {{
             background: {t['gradient']} !important;
             min-height: 100vh;
@@ -103,42 +119,59 @@ def inject_css():
         /* ── Sidebar ── */
         section[data-testid="stSidebar"] {{
             background: {t['card']} !important;
-            border-right: 1px solid {t['border']};
+            border-right: 1px solid {t['border']} !important;
             box-shadow: 2px 0 15px rgba(0,0,0,0.05);
+            overflow-y: hidden !important;
         }}
 
-        /* ── Sidebar Nav Buttons ── */
-        .nav-btn {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            width: 100%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: none;
-            background: transparent;
+        /* ── Remove sidebar scroll ── */
+        section[data-testid="stSidebar"] > div {{
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+        }}
+
+        /* ── Remove right arrow on radio ── */
+        .stRadio > div {{
+            display: none !important;
+        }}
+
+        /* ── Remove press enter text ── */
+        .stTextInput > div > div > div > small,
+        .stTextInput ~ small,
+        div[data-baseweb="input"] ~ div > small {{
+            display: none !important;
+        }}
+        input + div[style*="font-size"] {{
+            display: none !important;
+        }}
+
+        /* ── All Text Colors ── */
+        h1, h2, h3, h4, h5, h6 {{
+            color: {t['text']} !important;
+        }}
+        p, span, label, div {{
             color: {t['text']};
-            font-size: 0.95rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 6px;
-            text-align: left;
         }}
-        .nav-btn:hover {{
-            background: linear-gradient(135deg,#667eea22,#43e97b22);
-            transform: translateX(4px);
-            color: {t['primary']};
+        .stMarkdown p {{
+            color: {t['text']} !important;
         }}
-        .nav-btn.active {{
-            background: linear-gradient(135deg,#667eea,#43e97b);
-            color: white !important;
-            box-shadow: 0 4px 15px rgba(102,126,234,0.4);
-            transform: translateX(4px);
+
+        /* ── Input Fields ── */
+        .stTextInput > div > div > input {{
+            background: {t['input_bg']} !important;
+            color: {t['text']} !important;
+            border: 1px solid {t['border']} !important;
+            border-radius: 10px !important;
         }}
-        .nav-btn .icon {{
-            font-size: 1.2rem;
-            min-width: 24px;
+        .stTextInput > div > div > input:focus {{
+            border-color: {t['primary']} !important;
+            box-shadow: 0 0 0 2px {t['primary']}33 !important;
+        }}
+        .stSelectbox > div > div {{
+            background: {t['input_bg']} !important;
+            color: {t['text']} !important;
+            border: 1px solid {t['border']} !important;
+            border-radius: 10px !important;
         }}
 
         /* ── Cards ── */
@@ -153,7 +186,7 @@ def inject_css():
         }}
         .fm-card:hover {{
             transform: translateY(-3px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
         }}
 
         /* ── Badges ── */
@@ -164,47 +197,54 @@ def inject_css():
             font-weight: 600;
             display: inline-block;
         }}
-        .badge-red    {{ background:#ffe0e0; color:#c62828; }}
-        .badge-orange {{ background:#fff3e0; color:#e65100; }}
-        .badge-green  {{ background:#e0f2e9; color:#1b5e20; }}
-        .badge-gray   {{ background:#f0f0f0; color:#555;    }}
+        .badge-red    {{ background:#ffe0e0; color:#c62828 !important; }}
+        .badge-orange {{ background:#fff3e0; color:#e65100 !important; }}
+        .badge-green  {{ background:#e0f2e9; color:#1b5e20 !important; }}
+        .badge-gray   {{ background:#f0f0f0; color:#555 !important;    }}
 
         /* ── Item Cards ── */
         .item-card {{
             background: {t['card']};
             border-radius: 12px;
-            padding: 16px 20px;
+            padding: 14px 18px;
             margin-bottom: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-            border-left: 5px solid {t['success']};
-            transition: all 0.2s;
+            border-left: 5px solid #43e97b;
+            transition: all 0.25s;
         }}
         .item-card:hover {{
-            transform: translateX(4px);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transform: translateX(5px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+            border-left-width: 6px;
         }}
         .item-card-red    {{ border-left-color: #f44336 !important; }}
         .item-card-orange {{ border-left-color: #ff9800 !important; }}
+        .item-card b, .item-card small {{
+            color: {t['text']} !important;
+        }}
 
         /* ── Buttons ── */
         .stButton > button {{
             border-radius: 10px !important;
             font-weight: 600 !important;
-            border: none !important;
             transition: all 0.2s !important;
+            color: {t['text']} !important;
         }}
         .stButton > button:hover {{
             transform: translateY(-2px) !important;
             box-shadow: 0 5px 15px rgba(102,126,234,0.4) !important;
+            background: linear-gradient(
+                135deg,#667eea,#43e97b
+            ) !important;
+            color: white !important;
         }}
 
         /* ── Hero Banner ── */
         .hero-banner {{
             background: {t['hero']};
-            padding: 35px 30px;
+            padding: 30px;
             border-radius: 20px;
-            color: white !important;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
             position: relative;
             overflow: hidden;
         }}
@@ -222,9 +262,10 @@ def inject_css():
             color: white !important;
             position: relative;
             z-index: 1;
+            margin: 0;
         }}
 
-        /* ── Chat ── */
+        /* ── Chat Bubbles ── */
         .chat-user {{
             background: linear-gradient(135deg,#667eea,#764ba2);
             color: white !important;
@@ -245,6 +286,98 @@ def inject_css():
             display: table;
         }}
 
+        /* ── Action Cards ── */
+        .action-card {{
+            background: {t['card']};
+            border-radius: 16px;
+            padding: 22px 16px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            border: 1px solid {t['border']};
+            transition: all 0.25s;
+            cursor: pointer;
+        }}
+        .action-card:hover {{
+            transform: translateY(-6px);
+            box-shadow: 0 12px 30px rgba(102,126,234,0.2);
+            border-color: {t['primary']};
+        }}
+        .action-card .action-icon {{
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+        }}
+        .action-card .action-title {{
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: {t['text']} !important;
+        }}
+        .action-card .action-desc {{
+            font-size: 0.72rem;
+            color: {t['subtext']} !important;
+            margin-top: 4px;
+        }}
+
+        /* ── Notification Bell ── */
+        .notif-bell {{
+            position: fixed;
+            top: 16px;
+            right: 20px;
+            z-index: 9999;
+            cursor: pointer;
+        }}
+        .notif-badge {{
+            position: absolute;
+            top: -6px; right: -6px;
+            background: #f44336;
+            color: white !important;
+            font-size: 10px;
+            font-weight: 700;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid white;
+            animation: pulse 1.5s infinite;
+        }}
+        @keyframes pulse {{
+            0%, 100% {{ transform: scale(1); }}
+            50%       {{ transform: scale(1.2); }}
+        }}
+
+        /* ── Notification Panel ── */
+        .notif-panel {{
+            position: fixed;
+            top: 50px; right: 20px;
+            width: 300px;
+            background: {t['card']};
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border: 1px solid {t['border']};
+            z-index: 9998;
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+        }}
+        .notif-item {{
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            border-left: 3px solid #f44336;
+            background: {'#16213e' if st.session_state.dark_mode
+                         else '#fff5f5'};
+        }}
+        .notif-item-title {{
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: {t['text']} !important;
+        }}
+        .notif-item-date {{
+            font-size: 0.72rem;
+            color: {t['subtext']} !important;
+            margin-top: 2px;
+        }}
+
         /* ── Animations ── */
         @keyframes fadeInUp {{
             from {{ opacity:0; transform:translateY(20px); }}
@@ -252,185 +385,187 @@ def inject_css():
         }}
         .fade-in {{ animation: fadeInUp 0.5s ease forwards; }}
 
-        /* ── Cooking Tips Slider ── */
-        .tips-container {{
-            background: {t['card']};
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border: 1px solid {t['border']};
-            margin: 16px 0;
-            min-height: 100px;
-            position: relative;
-            overflow: hidden;
-        }}
-        .tip-slide {{
-            display: none;
-            animation: fadeInUp 0.6s ease;
-        }}
-        .tip-slide.active {{ display: block; }}
-        .tip-dots {{
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-            margin-top: 16px;
-        }}
-        .dot {{
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            background: {t['border']};
-            cursor: pointer;
-            transition: all 0.3s;
-        }}
-        .dot.active {{
-            background: {t['primary']};
-            width: 20px;
-            border-radius: 4px;
-        }}
-
-        /* ── Quick Action Cards ── */
-        .action-card {{
-            background: {t['card']};
-            border-radius: 16px;
-            padding: 24px 20px;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border: 1px solid {t['border']};
-            cursor: pointer;
-            transition: all 0.25s;
-        }}
-        .action-card:hover {{
-            transform: translateY(-6px);
-            box-shadow: 0 12px 30px rgba(102,126,234,0.2);
-            border-color: {t['primary']};
-        }}
-        .action-icon {{ font-size: 2.5rem; margin-bottom: 10px; }}
-        .action-title {{
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: {t['text']};
-        }}
-        .action-desc {{
-            font-size: 0.75rem;
-            color: {t['subtext']};
-            margin-top: 4px;
-        }}
-
         /* ── Hide Streamlit UI ── */
         #MainMenu, footer, header {{ visibility: hidden; }}
         .block-container {{ padding-top: 1rem !important; }}
+
+        /* ── Metric card text fix ── */
+        .metric-num {{
+            color: inherit !important;
+        }}
     </style>
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
-# LOGIN SYSTEM
+# NOTIFICATION BELL (top right)
 # ─────────────────────────────────────────
 
-USERS = {
-    "admin":    hashlib.sha256("admin123".encode()).hexdigest(),
-    "person_a": hashlib.sha256("persona123".encode()).hexdigest(),
-    "person_b": hashlib.sha256("personb123".encode()).hexdigest(),
-}
-
-def hash_password(p):
-    return hashlib.sha256(p.encode()).hexdigest()
-
-def login_page():
-    inject_css()
+def render_notification_bell():
+    """Fixed position notification bell top right"""
     t = get_theme()
+    expiring = get_expiring_items(7)
+    critical = get_expiring_items(3)
+    count    = len(expiring)
 
-    components.html("""
-        <style>
-            body { margin:0; overflow:hidden; }
-            canvas { display:block; }
-        </style>
-        <canvas id="bg"></canvas>
-        <script>
-            const canvas = document.getElementById('bg');
-            const ctx = canvas.getContext('2d');
-            canvas.width = window.innerWidth;
-            canvas.height = 200;
-            const particles = Array.from({length:40}, () => ({
-                x: Math.random()*canvas.width,
-                y: Math.random()*canvas.height,
-                r: Math.random()*3+1,
-                dx: (Math.random()-0.5)*1.5,
-                dy: (Math.random()-0.5)*1.5,
-                color: `hsla(${Math.random()*60+120},70%,50%,0.6)`
-            }));
-            function animate() {
-                ctx.clearRect(0,0,canvas.width,canvas.height);
-                particles.forEach(p => {
-                    ctx.beginPath();
-                    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-                    ctx.fillStyle = p.color;
-                    ctx.fill();
-                    p.x+=p.dx; p.y+=p.dy;
-                    if(p.x<0||p.x>canvas.width)  p.dx*=-1;
-                    if(p.y<0||p.y>canvas.height) p.dy*=-1;
-                });
-                requestAnimationFrame(animate);
-            }
-            animate();
-        </script>
-    """, height=200)
+    if "show_notif" not in st.session_state:
+        st.session_state.show_notif = False
 
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.markdown(f"""
-            <div class='fade-in' style='text-align:center; padding:20px 0;'>
-                <div style='font-size:4rem;'>🥗</div>
-                <h1 style='font-size:2.5rem; font-weight:700;
-                           background:linear-gradient(135deg,#667eea,#43e97b);
-                           -webkit-background-clip:text;
-                           -webkit-text-fill-color:transparent;'>
-                    FreshMind
-                </h1>
-                <p style='color:{t["subtext"]}; font-size:1rem;'>
-                    Your AI-Powered Smart Pantry Assistant
-                </p>
+    # Build notification items HTML
+    notif_items_html = ""
+    for item in expiring:
+        _, days, _, _ = get_expiry_info(item['expiry_date'])
+        if days < 0:
+            label = f"EXPIRED {abs(days)} days ago!"
+            color = "#f44336"
+        elif days == 0:
+            label = "Expires TODAY!"
+            color = "#f44336"
+        elif days <= 3:
+            label = f"Expires in {days} day(s)!"
+            color = "#ff9800"
+        else:
+            label = f"Expires on {item['expiry_date']}"
+            color = "#ff9800"
+
+        notif_items_html += f"""
+            <div style='padding:10px 12px; border-radius:10px;
+                        margin-bottom:8px;
+                        border-left:3px solid {color};
+                        background:{'#16213e' if st.session_state.dark_mode
+                                    else '#fff5f5'};'>
+                <div style='font-size:0.85rem; font-weight:600;
+                            color:{t["text"]};'>
+                    {item['name']}
+                </div>
+                <div style='font-size:0.72rem;
+                            color:{t["subtext"]};
+                            margin-top:2px;'>
+                    📅 {label}
+                </div>
             </div>
-        """, unsafe_allow_html=True)
+        """
 
-        with st.form("login_form"):
-            st.markdown("### 👋 Welcome Back!")
-            username = st.text_input(
-                "👤 Username", placeholder="Enter username"
-            )
-            password = st.text_input(
-                "🔒 Password", type="password",
-                placeholder="Enter password"
-            )
-            c1, c2 = st.columns(2)
-            with c1:
-                submitted = st.form_submit_button(
-                    "🔐 Login", use_container_width=True
-                )
-            with c2:
-                dark = st.form_submit_button(
-                    "🌙 Dark" if not st.session_state.dark_mode
-                    else "☀️ Light",
-                    use_container_width=True
-                )
-            if dark:
-                st.session_state.dark_mode = \
-                    not st.session_state.dark_mode
-                st.rerun()
-            if submitted:
-                if username in USERS and \
-                   USERS[username] == hash_password(password):
-                    st.session_state.logged_in = True
-                    st.session_state.username  = username
-                    st.rerun()
-                else:
-                    st.error("❌ Wrong username or password!")
+    empty_html = "" if expiring else f"""
+        <div style='text-align:center; padding:20px;
+                    color:{t["subtext"]}; font-size:0.85rem;'>
+            ✅ No expiry alerts!
+        </div>
+    """
 
-        st.markdown(f"""
-            <p style='text-align:center; color:{t["subtext"]};
-                      font-size:0.8rem; margin-top:15px;'>
-                Demo: <b>admin</b> / <b>admin123</b>
-            </p>
-        """, unsafe_allow_html=True)
+    components.html(f"""
+        <style>
+            * {{ font-family:'Poppins',sans-serif;
+                 box-sizing:border-box; }}
+            .bell-wrap {{
+                position: fixed;
+                top: 12px; right: 20px;
+                z-index: 99999;
+            }}
+            .bell-btn {{
+                background: {'#1a1a2e' if st.session_state.dark_mode
+                             else 'white'};
+                border: 1px solid {'#2a2a4a' if st.session_state.dark_mode
+                                   else '#e0e8f0'};
+                border-radius: 50%;
+                width: 42px; height: 42px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                font-size: 1.2rem;
+                position: relative;
+                transition: all 0.2s;
+            }}
+            .bell-btn:hover {{
+                transform: scale(1.1);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            }}
+            .badge {{
+                position: absolute;
+                top: -4px; right: -4px;
+                background: #f44336;
+                color: white;
+                font-size: 9px;
+                font-weight: 700;
+                min-width: 16px; height: 16px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 2px solid white;
+                padding: 0 3px;
+                animation: pulse 1.5s infinite;
+            }}
+            @keyframes pulse {{
+                0%,100% {{ transform:scale(1); }}
+                50%      {{ transform:scale(1.3); }}
+            }}
+            .panel {{
+                display: none;
+                position: fixed;
+                top: 60px; right: 20px;
+                width: 280px;
+                background: {'#1a1a2e' if st.session_state.dark_mode
+                             else 'white'};
+                border-radius: 16px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                border: 1px solid {'#2a2a4a' if st.session_state.dark_mode
+                                   else '#e0e8f0'};
+                padding: 16px;
+                max-height: 380px;
+                overflow-y: auto;
+                z-index: 99998;
+                animation: fadeIn 0.2s ease;
+            }}
+            .panel.open {{ display: block; }}
+            @keyframes fadeIn {{
+                from {{ opacity:0; transform:translateY(-10px); }}
+                to   {{ opacity:1; transform:translateY(0); }}
+            }}
+            .panel-title {{
+                font-size: 0.9rem;
+                font-weight: 700;
+                color: {'#ffffff' if st.session_state.dark_mode
+                        else '#1a1a2e'};
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid {'#2a2a4a' if st.session_state.dark_mode
+                                          else '#e0e8f0'};
+            }}
+        </style>
+
+        <div class="bell-wrap">
+            <div class="bell-btn" onclick="togglePanel()"
+                 title="Expiry Notifications">
+                🔔
+                {'<div class="badge">' + str(count) + '</div>'
+                 if count > 0 else ''}
+            </div>
+            <div class="panel" id="notif-panel">
+                <div class="panel-title">
+                    🔔 Expiry Alerts ({count})
+                </div>
+                {notif_items_html}
+                {empty_html}
+            </div>
+        </div>
+
+        <script>
+            function togglePanel() {{
+                const panel = document.getElementById('notif-panel');
+                panel.classList.toggle('open');
+            }}
+            // Close when clicking outside
+            document.addEventListener('click', function(e) {{
+                const wrap = document.querySelector('.bell-wrap');
+                if (!wrap.contains(e.target)) {{
+                    document.getElementById('notif-panel')
+                        .classList.remove('open');
+                }}
+            }});
+        </script>
+    """, height=60)
 
 # ─────────────────────────────────────────
 # HELPERS
@@ -456,112 +591,355 @@ def confetti():
             confetti({
                 particleCount: 120, spread: 80,
                 origin: {y:0.6},
-                colors: ['#667eea','#43e97b','#f093fb','#4facfe','#fa709a']
+                colors:['#667eea','#43e97b','#f093fb',
+                        '#4facfe','#fa709a']
             });
         </script>
     """, height=0)
 
 # ─────────────────────────────────────────
-# SIDEBAR — BUTTON NAVIGATION
+# LOGIN PAGE — Lottie Animation
+# ─────────────────────────────────────────
+
+def login_page():
+    inject_css()
+    t = get_theme()
+
+    # ── Lottie Animation Header ──
+    components.html("""
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+        <style>
+            body {{ margin:0; overflow:hidden; }}
+            #lottie-bg {{
+                width: 100%;
+                height: 200px;
+                background: linear-gradient(
+                    135deg, #2e7d32, #66bb6a
+                );
+                border-radius: 0 0 30px 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                overflow: hidden;
+            }}
+            .food-items {{
+                display: flex;
+                gap: 20px;
+                font-size: 3rem;
+                animation: float 3s ease-in-out infinite;
+            }}
+            .food-items span {{
+                animation: bounce 1s ease-in-out infinite;
+            }}
+            .food-items span:nth-child(2) {{
+                animation-delay: 0.2s;
+            }}
+            .food-items span:nth-child(3) {{
+                animation-delay: 0.4s;
+            }}
+            .food-items span:nth-child(4) {{
+                animation-delay: 0.6s;
+            }}
+            .food-items span:nth-child(5) {{
+                animation-delay: 0.8s;
+            }}
+            @keyframes bounce {{
+                0%, 100% {{ transform: translateY(0); }}
+                50%       {{ transform: translateY(-20px); }}
+            }}
+            .tagline {{
+                position: absolute;
+                bottom: 20px;
+                color: white;
+                font-family: 'Poppins', sans-serif;
+                font-size: 1rem;
+                opacity: 0.9;
+                letter-spacing: 1px;
+            }}
+            /* Floating particles */
+            .particle {{
+                position: absolute;
+                border-radius: 50%;
+                opacity: 0.3;
+                animation: floatUp 4s ease-in-out infinite;
+            }}
+            @keyframes floatUp {{
+                0%   {{ transform: translateY(100px); opacity:0; }}
+                50%  {{ opacity: 0.4; }}
+                100% {{ transform: translateY(-100px); opacity:0; }}
+            }}
+        </style>
+
+        <div id="lottie-bg">
+            <!-- Floating particles -->
+            <div class="particle" style="
+                width:20px; height:20px;
+                background:#ffffff;
+                left:10%; animation-delay:0s;
+            "></div>
+            <div class="particle" style="
+                width:12px; height:12px;
+                background:#43e97b;
+                left:30%; animation-delay:1s;
+            "></div>
+            <div class="particle" style="
+                width:16px; height:16px;
+                background:#ffffff;
+                left:60%; animation-delay:2s;
+            "></div>
+            <div class="particle" style="
+                width:10px; height:10px;
+                background:#43e97b;
+                left:80%; animation-delay:0.5s;
+            "></div>
+
+            <!-- Bouncing food emojis -->
+            <div>
+                <div class="food-items">
+                    <span>🥗</span>
+                    <span>🍎</span>
+                    <span>🥛</span>
+                    <span>🥦</span>
+                    <span>🍋</span>
+                </div>
+                <div class="tagline"
+                     style="text-align:center; width:100%;">
+                    ✨ Reduce waste. Eat smart. Live fresh.
+                </div>
+            </div>
+        </div>
+    """, height=210)
+
+    # ── Login / Register Form ──
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.markdown(f"""
+            <div style='text-align:center; padding:16px 0 8px;'>
+                <h1 style='font-size:2.2rem; font-weight:700;
+                           background:linear-gradient(
+                               135deg,#667eea,#43e97b
+                           );
+                           -webkit-background-clip:text;
+                           -webkit-text-fill-color:transparent;
+                           margin:0;'>
+                    FreshMind 🥗
+                </h1>
+                <p style='color:{t["subtext"]}; font-size:0.9rem;
+                           margin:4px 0 16px;'>
+                    Your AI-Powered Smart Pantry
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Toggle between login and register
+        tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
+
+        # ── LOGIN TAB ──
+        with tab1:
+            with st.form("login_form"):
+                username = st.text_input(
+                    "👤 Username",
+                    placeholder="Enter username"
+                )
+                password = st.text_input(
+                    "🔒 Password",
+                    type="password",
+                    placeholder="Enter password"
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    submitted = st.form_submit_button(
+                        "🔐 Login",
+                        use_container_width=True
+                    )
+                with c2:
+                    dark = st.form_submit_button(
+                        "🌙 Dark" if not st.session_state.dark_mode
+                        else "☀️ Light",
+                        use_container_width=True
+                    )
+
+                if dark:
+                    st.session_state.dark_mode = \
+                        not st.session_state.dark_mode
+                    st.rerun()
+
+                if submitted:
+                    if not username or not password:
+                        st.error("❌ Fill in all fields!")
+                    else:
+                        user = login_user(username, password)
+                        if user:
+                            st.session_state.logged_in  = True
+                            st.session_state.username   = username
+                            st.session_state.user_data  = user
+                            st.rerun()
+                        else:
+                            st.error("❌ Wrong username or password!")
+
+            st.markdown(f"""
+                <p style='text-align:center;
+                          color:{t["subtext"]};
+                          font-size:0.78rem; margin-top:8px;'>
+                    Demo: <b>admin</b> / <b>admin123</b>
+                </p>
+            """, unsafe_allow_html=True)
+
+        # ── REGISTER TAB ──
+        with tab2:
+            with st.form("register_form"):
+                r_name = st.text_input(
+                    "👤 Full Name *",
+                    placeholder="Your full name"
+                )
+                r_username = st.text_input(
+                    "🆔 Username *",
+                    placeholder="Choose a username"
+                )
+                r_email = st.text_input(
+                    "📧 Email",
+                    placeholder="your@email.com"
+                )
+                r_pass = st.text_input(
+                    "🔒 Password *",
+                    type="password",
+                    placeholder="Min 6 characters"
+                )
+                r_pass2 = st.text_input(
+                    "🔒 Confirm Password *",
+                    type="password",
+                    placeholder="Repeat password"
+                )
+
+                reg_submitted = st.form_submit_button(
+                    "📝 Create Account",
+                    use_container_width=True
+                )
+
+                if reg_submitted:
+                    if not r_name or not r_username or not r_pass:
+                        st.error("❌ Fill in all required fields!")
+                    elif len(r_pass) < 6:
+                        st.error(
+                            "❌ Password must be at least 6 chars!"
+                        )
+                    elif r_pass != r_pass2:
+                        st.error("❌ Passwords don't match!")
+                    else:
+                        success, msg = register_user(
+                            r_username, r_pass,
+                            r_email, r_name
+                        )
+                        if success:
+                            st.success(msg)
+                            st.info("Now login with your credentials!")
+                        else:
+                            st.error(msg)
+
+# ─────────────────────────────────────────
+# SIDEBAR
 # ─────────────────────────────────────────
 
 def render_sidebar():
     t = get_theme()
-
     with st.sidebar:
-        # Logo & Title
+        # Logo
         st.markdown(f"""
-            <div style='text-align:center; padding:16px 0 20px;'>
-                <div style='font-size:3rem;'>🥗</div>
+            <div style='text-align:center;
+                        padding:16px 0 16px;'>
+                <div style='font-size:2.8rem;'>🥗</div>
                 <h2 style='margin:4px 0; color:{t["primary"]};
-                           font-size:1.4rem;'>FreshMind</h2>
-                <p style='color:{t["subtext"]}; font-size:0.75rem;
-                           margin:0;'>Smart Pantry Assistant</p>
+                           font-size:1.3rem;'>FreshMind</h2>
+                <p style='color:{t["subtext"]};
+                           font-size:0.72rem; margin:0;'>
+                    Smart Pantry Assistant
+                </p>
             </div>
         """, unsafe_allow_html=True)
 
-        # User Card
+        # User card
+        user = st.session_state.user_data
+        full_name = user.get("full_name", "") or \
+                    st.session_state.username
         st.markdown(f"""
             <div style='background:{t["card2"]};
                         border:1px solid {t["border"]};
-                        border-radius:12px; padding:10px 14px;
-                        margin-bottom:16px;'>
-                <b style='color:{t["text"]};'>
-                    👤 {st.session_state.username}
+                        border-radius:12px;
+                        padding:10px 14px;
+                        margin-bottom:14px;'>
+                <b style='color:{t["text"]};
+                           font-size:0.9rem;'>
+                    👤 {full_name}
                 </b><br>
                 <small style='color:{t["subtext"]};'>
-                    ● Online
+                    @{st.session_state.username} ● Online
                 </small>
             </div>
         """, unsafe_allow_html=True)
 
+        # Nav label
         st.markdown(f"""
-            <p style='color:{t["subtext"]}; font-size:0.72rem;
-                      margin:0 0 8px 4px; font-weight:600;
-                      text-transform:uppercase; letter-spacing:1px;'>
+            <p style='color:{t["subtext"]};
+                      font-size:0.68rem;
+                      margin:0 0 6px 4px;
+                      font-weight:600;
+                      text-transform:uppercase;
+                      letter-spacing:1px;'>
                 Navigation
             </p>
         """, unsafe_allow_html=True)
 
         # Nav buttons
         pages = [
-            ("🏠", "Home",        "🏠 Home"),
-            ("📦", "My Pantry",   "📦 My Pantry"),
-            ("➕", "Add Item",    "➕ Add Item"),
-            ("🤖", "AI Recipes",  "🤖 AI Recipes"),
-            ("📊", "Dashboard",   "📊 Dashboard"),
+            ("🏠", "Home",       "🏠 Home"),
+            ("📦", "Pantry",     "📦 My Pantry"),
+            ("➕", "Add Item",   "➕ Add Item"),
+            ("🤖", "Recipes",    "🤖 AI Recipes"),
+            ("📊", "Dashboard",  "📊 Dashboard"),
+            ("👨‍👩‍👧", "Family",   "👨‍👩‍👧 Family"),
+            ("⚙️", "Settings",  "⚙️ Settings"),
         ]
 
         for icon, label, key in pages:
             is_active = st.session_state.current_page == key
-            active_cls = "active" if is_active else ""
+            btn_label = f"{icon}  {label}"
 
-            # Use a styled button
-            btn_style = f"""
-                background: {'linear-gradient(135deg,#667eea,#43e97b)'
-                             if is_active else 'transparent'};
-                color: {'white' if is_active else t['text']};
-                border: {'none' if is_active
-                         else f'1px solid {t["border"]}'};
-                box-shadow: {'0 4px 15px rgba(102,126,234,0.35)'
-                             if is_active else 'none'};
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                width: 100%;
-                padding: 11px 14px;
-                border-radius: 12px;
-                font-size: 0.92rem;
-                font-weight: {'600' if is_active else '500'};
-                cursor: pointer;
-                margin-bottom: 6px;
-                transition: all 0.2s;
-                font-family: 'Poppins', sans-serif;
-            """
-
-            if st.button(
-                f"{icon}  {label}",
-                key=f"nav_{key}",
-                use_container_width=True
-            ):
-                st.session_state.current_page = key
-                st.rerun()
-
-            # Inject active style per button
+            # Style active button differently
             if is_active:
                 st.markdown(f"""
-                    <style>
-                        div[data-testid="stButton"]
-                        button[kind="secondary"]:has(
-                            div:contains("{icon}  {label}")
-                        ) {{
-                            background: linear-gradient(
-                                135deg,#667eea,#43e97b
-                            ) !important;
-                            color: white !important;
-                        }}
-                    </style>
+                    <div style='
+                        background:linear-gradient(
+                            135deg,#667eea,#43e97b
+                        );
+                        color:white;
+                        padding:11px 14px;
+                        border-radius:12px;
+                        font-size:0.9rem;
+                        font-weight:600;
+                        margin-bottom:5px;
+                        box-shadow:0 4px 15px
+                            rgba(102,126,234,0.35);
+                    '>
+                        {icon} &nbsp; {label}
+                    </div>
                 """, unsafe_allow_html=True)
+                # Hidden button to maintain click functionality
+                if st.button(
+                    btn_label,
+                    key=f"nav_{key}",
+                    use_container_width=True
+                ):
+                    st.session_state.current_page = key
+                    st.rerun()
+            else:
+                if st.button(
+                    btn_label,
+                    key=f"nav_{key}",
+                    use_container_width=True
+                ):
+                    st.session_state.current_page = key
+                    st.rerun()
 
         st.markdown("---")
 
@@ -569,34 +947,35 @@ def render_sidebar():
         c1, c2 = st.columns(2)
         with c1:
             if st.button(
-                "🌙" if not st.session_state.dark_mode else "☀️",
+                "🌙" if not st.session_state.dark_mode
+                else "☀️",
                 use_container_width=True,
-                help="Toggle Dark/Light Mode"
+                help="Toggle Theme"
             ):
                 st.session_state.dark_mode = \
                     not st.session_state.dark_mode
                 st.rerun()
         with c2:
             if st.button(
-                "🔔", use_container_width=True,
-                help="Check Expiry Alerts"
+                "📷", use_container_width=True,
+                help="Scan Barcode"
             ):
-                check_and_notify()
-                st.toast("✅ Expiry check done!")
+                st.session_state.current_page = "➕ Add Item"
+                st.session_state.show_scanner = True
+                st.rerun()
 
         st.markdown("")
-
-        if st.button(
-            "🚪 Logout", use_container_width=True
-        ):
+        if st.button("🚪 Logout", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
         st.markdown(f"""
-            <p style='text-align:center; color:{t["subtext"]};
-                      font-size:0.68rem; margin-top:20px;'>
-                Built with ❤️ using Python & Streamlit
+            <p style='text-align:center;
+                      color:{t["subtext"]};
+                      font-size:0.65rem;
+                      margin-top:16px;'>
+                Built with ❤️ Python & Streamlit
             </p>
         """, unsafe_allow_html=True)
 
@@ -609,13 +988,17 @@ def render_sidebar():
 def home_page():
     t = get_theme()
 
-    # Hero Banner
+    user = st.session_state.user_data
+    full_name = user.get("full_name", "") or \
+                st.session_state.username
+
     st.markdown(f"""
         <div class='hero-banner fade-in'>
-            <h1 style='font-size:2rem; margin:0;'>
-                👋 Hello, {st.session_state.username}!
+            <h1 style='font-size:1.8rem;'>
+                👋 Hello, {full_name}!
             </h1>
-            <p style='font-size:1.05rem; opacity:0.85; margin:8px 0 0;'>
+            <p style='font-size:1rem; opacity:0.85;
+                      margin-top:6px;'>
                 {date.today().strftime("%A, %B %d %Y")} —
                 Here's your pantry overview
             </p>
@@ -632,56 +1015,69 @@ def home_page():
 
     # ── Animated Metric Cards ──
     components.html(f"""
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+              rel="stylesheet">
         <style>
-            * {{ font-family:'Poppins',sans-serif; box-sizing:border-box; }}
+            * {{ font-family:'Poppins',sans-serif;
+                 box-sizing:border-box; }}
             .grid {{
                 display:grid;
                 grid-template-columns:repeat(4,1fr);
-                gap:16px; padding:4px 0 16px;
+                gap:14px; padding:4px 0 12px;
             }}
             .card {{
-                background:{'#1a1a2e' if st.session_state.dark_mode else 'white'};
-                border-radius:16px; padding:22px;
+                background:{'#1a1a2e' if st.session_state.dark_mode
+                            else 'white'};
+                border-radius:14px; padding:20px;
                 text-align:center;
-                box-shadow:0 4px 20px rgba(0,0,0,0.08);
+                box-shadow:0 4px 16px rgba(0,0,0,0.08);
                 transition:transform 0.2s;
-                cursor:default;
             }}
             .card:hover {{ transform:translateY(-5px); }}
-            .icon  {{ font-size:2rem; margin-bottom:6px; }}
-            .num   {{ font-size:2.2rem; font-weight:700; margin:4px 0; }}
+            .icon  {{ font-size:1.8rem; margin-bottom:6px; }}
+            .num   {{
+                font-size:2rem; font-weight:700; margin:4px 0;
+            }}
             .lbl   {{
-                font-size:0.75rem;
-                color:{'#a0a0b0' if st.session_state.dark_mode else '#888'};
+                font-size:0.72rem;
+                color:{'#a0a0b0' if st.session_state.dark_mode
+                       else '#888'};
+                margin-top:2px;
             }}
         </style>
         <div class="grid">
             <div class="card">
                 <div class="icon">📦</div>
-                <div class="num" style="color:#667eea" id="c1">0</div>
+                <div class="num" style="color:#667eea"
+                     id="c1">0</div>
                 <div class="lbl">Total Items</div>
             </div>
             <div class="card">
                 <div class="icon">⚠️</div>
-                <div class="num" style="color:#fa709a" id="c2">0</div>
+                <div class="num" style="color:#fa709a"
+                     id="c2">0</div>
                 <div class="lbl">Expiring This Week</div>
             </div>
             <div class="card">
                 <div class="icon">✅</div>
-                <div class="num" style="color:#43e97b" id="c3">0</div>
+                <div class="num" style="color:#43e97b"
+                     id="c3">0</div>
                 <div class="lbl">Items Saved</div>
             </div>
             <div class="card">
                 <div class="icon">🗑️</div>
-                <div class="num" style="color:#f44336" id="c4">0</div>
+                <div class="num" style="color:#f44336"
+                     id="c4">0</div>
                 <div class="lbl">Items Wasted</div>
             </div>
         </div>
         <script>
             function countUp(id, target, duration=1500) {{
                 const el = document.getElementById(id);
-                if(target === 0) {{ el.textContent = 0; return; }}
+                if(!el || target===0) {{
+                    if(el) el.textContent = 0;
+                    return;
+                }}
                 let start = 0;
                 const step = target / (duration/16);
                 const timer = setInterval(() => {{
@@ -699,7 +1095,7 @@ def home_page():
             countUp('c3', {saved});
             countUp('c4', {wasted});
         </script>
-    """, height=150)
+    """, height=145)
 
     # ── Alerts ──
     if critical_items:
@@ -715,258 +1111,234 @@ def home_page():
     elif expiring_items:
         st.warning(
             f"⚠️ {len(expiring_items)} items expiring "
-            f"this week — check your pantry!"
+            f"this week!"
         )
     else:
         st.success("✅ Everything is fresh! No urgent alerts.")
 
     st.markdown("---")
 
-    # ── Auto Sliding Cooking Tips ──
+    # ── Cooking Tips Slider (5s) ──
     st.markdown(f"""
         <h3 style='color:{t["text"]}; margin-bottom:8px;'>
-            🍳 Cooking Tips of the Day
+            🍳 Cooking Tips
         </h3>
     """, unsafe_allow_html=True)
 
+    # Daily Pantry Tips button (Groq powered)
+    if st.button(
+        "✨ Get AI Tips for My Pantry Today",
+        use_container_width=False
+    ):
+        with st.spinner("🤖 Getting personalized tips..."):
+            try:
+                from groq import Groq
+                from dotenv import load_dotenv
+                import os
+                load_dotenv()
+                client = Groq(
+                    api_key=os.getenv("GROQ_API_KEY")
+                )
+                items_text = ", ".join(
+                    [i['name'] for i in all_items[:10]]
+                ) if all_items else "empty pantry"
+
+                resp = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    max_tokens=300,
+                    messages=[{
+                        "role": "user",
+                        "content": f"""Give 3 quick cooking tips 
+                        for these pantry items: {items_text}.
+                        Keep each tip under 2 sentences.
+                        Format: emoji + tip text"""
+                    }]
+                )
+                tips_text = resp.choices[0].message.content
+                st.info(f"💡 **AI Tips for Your Pantry:**\n\n"
+                        f"{tips_text}")
+            except Exception as e:
+                st.error(f"❌ Could not get tips: {e}")
+
+    # Auto sliding tips (5s interval)
     components.html(f"""
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap"
+              rel="stylesheet">
         <style>
-            * {{ font-family:'Poppins',sans-serif; box-sizing:border-box; }}
-            .slider-wrap {{
-                background:{'#1a1a2e' if st.session_state.dark_mode else 'white'};
-                border-radius:16px;
-                padding:24px 28px;
-                box-shadow:0 4px 20px rgba(0,0,0,0.08);
-                border:1px solid {'#2a2a4a' if st.session_state.dark_mode else '#e0e8f0'};
-                min-height:110px;
-                position:relative;
+            * {{ font-family:'Poppins',sans-serif;
+                 box-sizing:border-box; }}
+            .wrap {{
+                background:{'#1a1a2e' if st.session_state.dark_mode
+                            else 'white'};
+                border-radius:14px; padding:20px 24px;
+                box-shadow:0 4px 16px rgba(0,0,0,0.08);
+                border:1px solid {'#2a2a4a' if st.session_state.dark_mode
+                                  else '#e0e8f0'};
             }}
             .tip {{
                 display:none;
-                animation:fadeIn 0.6s ease;
+                animation:slide 0.5s ease;
             }}
             .tip.active {{ display:block; }}
-            @keyframes fadeIn {{
+            @keyframes slide {{
                 from {{ opacity:0; transform:translateX(20px); }}
                 to   {{ opacity:1; transform:translateX(0); }}
             }}
-            .tip-icon {{
-                font-size:2rem;
-                margin-bottom:8px;
-            }}
+            .tip-icon {{ font-size:1.8rem; margin-bottom:6px; }}
             .tip-title {{
-                font-size:1rem;
-                font-weight:600;
-                color:{'#ffffff' if st.session_state.dark_mode else '#1a1a2e'};
-                margin-bottom:6px;
+                font-size:0.95rem; font-weight:600;
+                color:{'#fff' if st.session_state.dark_mode
+                       else '#1a1a2e'};
+                margin-bottom:4px;
             }}
             .tip-text {{
-                font-size:0.85rem;
-                color:{'#a0a0b0' if st.session_state.dark_mode else '#555'};
-                line-height:1.6;
+                font-size:0.82rem; line-height:1.6;
+                color:{'#a0a0b0' if st.session_state.dark_mode
+                       else '#555'};
             }}
-            .dots {{
-                display:flex;
-                gap:6px;
-                justify-content:center;
-                margin-top:16px;
-            }}
-            .dot {{
-                width:8px; height:8px;
-                border-radius:50%;
-                background:{'#2a2a4a' if st.session_state.dark_mode else '#ddd'};
-                cursor:pointer;
-                transition:all 0.3s;
-                border:none;
-            }}
-            .dot.active {{
-                background:#667eea;
-                width:20px;
-                border-radius:4px;
-            }}
-            .nav-arrows {{
+            .controls {{
                 display:flex;
                 justify-content:space-between;
+                align-items:center;
                 margin-top:12px;
             }}
+            .dots {{
+                display:flex; gap:5px;
+            }}
+            .dot {{
+                width:7px; height:7px;
+                border-radius:50%;
+                background:{'#2a2a4a' if st.session_state.dark_mode
+                            else '#ddd'};
+                cursor:pointer; border:none;
+                transition:all 0.3s;
+            }}
+            .dot.active {{
+                background:#667eea; width:18px;
+                border-radius:4px;
+            }}
             .arrow {{
-                background:{'#2a2a4a' if st.session_state.dark_mode else '#f0f4f8'};
-                border:none;
-                border-radius:8px;
-                padding:6px 14px;
-                cursor:pointer;
-                font-size:1rem;
-                color:{'#ffffff' if st.session_state.dark_mode else '#333'};
-                transition:all 0.2s;
+                background:{'#2a2a4a' if st.session_state.dark_mode
+                            else '#f0f4f8'};
+                border:none; border-radius:8px;
+                padding:5px 12px; cursor:pointer;
+                color:{'#fff' if st.session_state.dark_mode
+                       else '#333'};
+                font-size:0.85rem; transition:all 0.2s;
             }}
             .arrow:hover {{
-                background:#667eea;
-                color:white;
-                transform:scale(1.05);
+                background:#667eea; color:white;
             }}
-            .progress-bar {{
-                height:3px;
-                background:#667eea;
-                border-radius:2px;
-                margin-top:14px;
+            .progress {{
+                height:3px; background:#667eea;
+                border-radius:2px; margin-top:10px;
                 transition:width 0.1s linear;
             }}
         </style>
-
-        <div class="slider-wrap">
-            <div id="tips-container"></div>
-            <div class="progress-bar" id="progress"></div>
-            <div class="nav-arrows">
-                <button class="arrow" onclick="prevTip()">← Prev</button>
+        <div class="wrap">
+            <div id="tc"></div>
+            <div class="progress" id="prog"></div>
+            <div class="controls">
+                <button class="arrow" onclick="prev()">← Prev</button>
                 <div class="dots" id="dots"></div>
-                <button class="arrow" onclick="nextTip()">Next →</button>
+                <button class="arrow" onclick="next()">Next →</button>
             </div>
         </div>
-
         <script>
             const tips = [
-                {{
-                    icon: "🥦",
-                    title: "Store Vegetables Right",
-                    text: "Keep leafy greens wrapped in damp paper towels inside a bag in the fridge. They'll stay fresh 2x longer!"
-                }},
-                {{
-                    icon: "🧅",
-                    title: "Onion & Potato Rule",
-                    text: "Never store onions and potatoes together! Onions release gases that make potatoes sprout faster."
-                }},
-                {{
-                    icon: "🍋",
-                    title: "Citrus Juice Hack",
-                    text: "Microwave lemons/limes for 15 seconds before squeezing to get 2x more juice out of them!"
-                }},
-                {{
-                    icon: "🥛",
-                    title: "Milk Storage Tip",
-                    text: "Store milk on the middle shelf of your fridge, not the door. The door is warmer and milk will spoil faster."
-                }},
-                {{
-                    icon: "🍌",
-                    title: "Banana Ripening Trick",
-                    text: "To slow banana ripening, wrap the stem in plastic wrap. To speed it up, place them in a paper bag overnight."
-                }},
-                {{
-                    icon: "🧄",
-                    title: "Garlic Freshness",
-                    text: "Store garlic at room temperature in a mesh bag or open container. It can last up to 6 months this way!"
-                }},
-                {{
-                    icon: "🍞",
-                    title: "Bread Freshness",
-                    text: "Freeze bread slices you won't use within 3 days. Toast them straight from the freezer — tastes fresh!"
-                }},
-                {{
-                    icon: "🥚",
-                    title: "Egg Freshness Test",
-                    text: "Drop an egg in water — if it sinks it's fresh, if it floats it's gone bad. Never eat a floating egg!"
-                }},
-                {{
-                    icon: "🌿",
-                    title: "Fresh Herbs Trick",
-                    text: "Treat fresh herbs like flowers — trim the stems and store them in a glass of water in the fridge!"
-                }},
-                {{
-                    icon: "🍎",
-                    title: "Apple Storage",
-                    text: "Apples release ethylene gas that ripens nearby produce faster. Store them separately or in a sealed bag!"
-                }}
+                {{icon:"🥦",title:"Store Vegetables Right",
+                  text:"Wrap leafy greens in damp paper towels. They stay fresh 2x longer in the fridge!"}},
+                {{icon:"🧅",title:"Onion & Potato Rule",
+                  text:"Never store onions and potatoes together — onions release gases that sprout potatoes!"}},
+                {{icon:"🍋",title:"Citrus Juice Hack",
+                  text:"Microwave lemons for 15 seconds before squeezing to get 2x more juice!"}},
+                {{icon:"🥛",title:"Milk Storage Tip",
+                  text:"Store milk on the middle shelf, not the door — it's cooler and lasts longer!"}},
+                {{icon:"🍌",title:"Banana Trick",
+                  text:"Wrap banana stems in plastic wrap to slow ripening. Works like magic!"}},
+                {{icon:"🧄",title:"Garlic Freshness",
+                  text:"Store garlic at room temperature in a mesh bag. Lasts up to 6 months!"}},
+                {{icon:"🍞",title:"Bread Hack",
+                  text:"Freeze bread you won't use in 3 days. Toast straight from freezer — tastes fresh!"}},
+                {{icon:"🥚",title:"Egg Test",
+                  text:"Drop an egg in water — sinks = fresh, floats = bad. Never eat a floating egg!"}},
+                {{icon:"🌿",title:"Fresh Herbs",
+                  text:"Treat herbs like flowers — trim stems and store in a glass of water in the fridge!"}},
+                {{icon:"🍎",title:"Apple Storage",
+                  text:"Apples release ethylene gas. Store separately or they'll ripen your other produce!"}},
             ];
+            let cur=0, progW=0, progTimer, autoTimer;
+            const INTERVAL = 5000; // ← 5 seconds!
+            const tc   = document.getElementById('tc');
+            const dots = document.getElementById('dots');
+            const prog = document.getElementById('prog');
 
-            let current = 0;
-            let timer;
-            let progressTimer;
-            let progressWidth = 0;
-            const INTERVAL = 4000;
-
-            const container = document.getElementById('tips-container');
-            const dotsEl    = document.getElementById('dots');
-            const progressEl = document.getElementById('progress');
-
-            // Build tips
-            tips.forEach((tip, i) => {{
-                const div = document.createElement('div');
-                div.className = 'tip' + (i===0 ? ' active' : '');
-                div.id = 'tip-' + i;
-                div.innerHTML = `
-                    <div class="tip-icon">${{tip.icon}}</div>
-                    <div class="tip-title">${{tip.title}}</div>
-                    <div class="tip-text">${{tip.text}}</div>
+            tips.forEach((t,i) => {{
+                const d = document.createElement('div');
+                d.className = 'tip'+(i===0?' active':'');
+                d.id = 'tip-'+i;
+                d.innerHTML = `
+                    <div class="tip-icon">${{t.icon}}</div>
+                    <div class="tip-title">${{t.title}}</div>
+                    <div class="tip-text">${{t.text}}</div>
                 `;
-                container.appendChild(div);
+                tc.appendChild(d);
 
                 const dot = document.createElement('button');
-                dot.className = 'dot' + (i===0 ? ' active' : '');
-                dot.id = 'dot-' + i;
-                dot.onclick = () => goTo(i);
-                dotsEl.appendChild(dot);
+                dot.className='dot'+(i===0?' active':'');
+                dot.id='dot-'+i;
+                dot.onclick=()=>goTo(i);
+                dots.appendChild(dot);
             }});
 
             function goTo(n) {{
-                document.getElementById('tip-' + current)
+                document.getElementById('tip-'+cur)
                     .classList.remove('active');
-                document.getElementById('dot-' + current)
+                document.getElementById('dot-'+cur)
                     .classList.remove('active');
-                current = (n + tips.length) % tips.length;
-                document.getElementById('tip-' + current)
+                cur = (n+tips.length)%tips.length;
+                document.getElementById('tip-'+cur)
                     .classList.add('active');
-                document.getElementById('dot-' + current)
+                document.getElementById('dot-'+cur)
                     .classList.add('active');
-                resetProgress();
+                resetProg();
             }}
+            function next() {{ goTo(cur+1); }}
+            function prev() {{ goTo(cur-1); }}
 
-            function nextTip() {{ goTo(current + 1); }}
-            function prevTip() {{ goTo(current - 1); }}
-
-            function resetProgress() {{
-                progressWidth = 0;
-                progressEl.style.width = '0%';
-                clearInterval(progressTimer);
-                progressTimer = setInterval(() => {{
-                    progressWidth += 100 / (INTERVAL / 100);
-                    progressEl.style.width = progressWidth + '%';
-                    if(progressWidth >= 100) clearInterval(progressTimer);
+            function resetProg() {{
+                progW=0; prog.style.width='0%';
+                clearInterval(progTimer);
+                clearInterval(autoTimer);
+                progTimer = setInterval(() => {{
+                    progW += 100/(INTERVAL/100);
+                    prog.style.width = progW+'%';
+                    if(progW>=100) clearInterval(progTimer);
                 }}, 100);
+                autoTimer = setTimeout(()=>next(), INTERVAL);
             }}
-
-            // Auto slide
-            function startAuto() {{
-                timer = setInterval(() => nextTip(), INTERVAL);
-            }}
-
-            resetProgress();
-            startAuto();
+            resetProg();
         </script>
-    """, height=260)
+    """, height=220)
 
     st.markdown("---")
 
-    # ── Interactive Quick Actions ──
+    # ── Quick Actions ──
     st.markdown(f"""
-        <h3 style='color:{t["text"]}; margin-bottom:16px;'>
+        <h3 style='color:{t["text"]}; margin-bottom:14px;'>
             ⚡ Quick Actions
         </h3>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
-
     actions = [
-        (col1, "➕", "Add Item",
-         "Add new pantry item", "➕ Add Item"),
-        (col2, "📦", "My Pantry",
-         "View & manage items", "📦 My Pantry"),
-        (col3, "🤖", "AI Recipes",
-         "Get smart recipes",   "🤖 AI Recipes"),
-        (col4, "📊", "Dashboard",
-         "View analytics",      "📊 Dashboard"),
+        ("➕", "Add Item",    "Add new item",    "➕ Add Item"),
+        ("📦", "My Pantry",  "View items",      "📦 My Pantry"),
+        ("🤖", "AI Recipes", "Smart recipes",   "🤖 AI Recipes"),
+        ("📊", "Dashboard",  "View analytics",  "📊 Dashboard"),
     ]
-
-    for col, icon, title, desc, page_key in actions:
+    cols = st.columns(4)
+    for col, (icon, title, desc, page_key) in \
+            zip(cols, actions):
         with col:
             st.markdown(f"""
                 <div class='action-card fade-in'>
@@ -976,8 +1348,8 @@ def home_page():
                 </div>
             """, unsafe_allow_html=True)
             if st.button(
-                f"Go to {title}",
-                key=f"home_btn_{page_key}",
+                f"→ {title}",
+                key=f"home_{page_key}",
                 use_container_width=True
             ):
                 st.session_state.current_page = page_key
@@ -986,31 +1358,29 @@ def home_page():
     # ── Recent Activity ──
     st.markdown("---")
     st.markdown(f"""
-        <h3 style='color:{t["text"]}; margin-bottom:12px;'>
+        <h3 style='color:{t["text"]}; margin-bottom:10px;'>
             🕐 Recent Activity
         </h3>
     """, unsafe_allow_html=True)
 
     history = get_usage_history()
     if not history:
-        st.info("No activity yet — start using your pantry!")
+        st.info("No activity yet!")
     else:
-        recent = list(history)[:5]
-        for h in recent:
-            icon  = "✅" if not h['was_wasted'] else "🗑️"
-            color = "#43e97b" if not h['was_wasted'] else "#f44336"
+        for h in list(history)[:5]:
+            icon   = "✅" if not h['was_wasted'] else "🗑️"
+            color  = "#43e97b" if not h['was_wasted'] else "#f44336"
             action = "Used" if not h['was_wasted'] else "Wasted"
             st.markdown(f"""
                 <div style='background:{t["card"]};
                             border-radius:10px;
-                            padding:10px 16px;
+                            padding:10px 14px;
                             margin-bottom:6px;
-                            border-left:4px solid {color};
-                            display:flex;
-                            align-items:center;
-                            gap:10px;'>
-                    <span style='font-size:1.2rem;'>{icon}</span>
-                    <span style='color:{t["text"]};font-size:0.88rem;'>
+                            border-left:4px solid {color};'>
+                    <span style='font-size:1.1rem;'>{icon}</span>
+                    <span style='color:{t["text"]};
+                                 font-size:0.85rem;
+                                 margin-left:8px;'>
                         <b>{h['item_name']}</b> — {action}
                         on {h['used_date']}
                     </span>
@@ -1018,13 +1388,14 @@ def home_page():
             """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
-# PAGE — PANTRY
+# PAGE — PANTRY (unchanged from before)
 # ─────────────────────────────────────────
 
 def pantry_page():
     t = get_theme()
     st.markdown("""
-        <div class='hero-banner fade-in' style='padding:20px 25px;'>
+        <div class='hero-banner fade-in'
+             style='padding:20px 25px;'>
             <h2 style='margin:0;'>📦 My Pantry</h2>
             <p style='margin:4px 0 0; opacity:0.85;'>
                 Manage your food items
@@ -1033,62 +1404,68 @@ def pantry_page():
     """, unsafe_allow_html=True)
 
     all_items = get_all_items()
-
     if not all_items:
-        st.info("🛒 Pantry is empty! Add some items to get started.")
+        st.info("🛒 Pantry is empty!")
         return
 
-    # ── Search & Filter ──
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col1:
+    c1, c2, c3 = st.columns([3, 1, 1])
+    with c1:
         search = st.text_input(
             "🔍 Search", placeholder="Search items..."
         )
-    with col2:
+    with c2:
         filter_cat = st.selectbox("Category", [
             "All","Dairy","Vegetables","Fruits",
             "Meat & Seafood","Grains & Cereals",
             "Snacks","Beverages","Condiments","Other"
         ])
-    with col3:
+    with c3:
         filter_expiry = st.selectbox("Expiry Filter", [
-            "All","Critical (≤3d)","Expiring (≤7d)","Fresh (>7d)"
+            "All","Critical (≤3d)",
+            "Expiring (≤7d)","Fresh (>7d)"
         ])
 
-    # ── Filter Logic ──
     filtered = []
     for item in all_items:
         _, days, _, _ = get_expiry_info(item['expiry_date'])
-        ms = search.lower() in item['name'].lower() if search else True
-        mc = item['category'] == filter_cat if filter_cat != "All" else True
+        ms = search.lower() in item['name'].lower() \
+             if search else True
+        mc = item['category'] == filter_cat \
+             if filter_cat != "All" else True
         me = True
-        if   filter_expiry == "Critical (≤3d)":  me = days <= 3
-        elif filter_expiry == "Expiring (≤7d)":  me = days <= 7
-        elif filter_expiry == "Fresh (>7d)":     me = days > 7
+        if   filter_expiry == "Critical (≤3d)": me = days <= 3
+        elif filter_expiry == "Expiring (≤7d)": me = days <= 7
+        elif filter_expiry == "Fresh (>7d)":    me = days > 7
         if ms and mc and me:
             filtered.append(item)
 
     st.markdown(
-        f"Showing **{len(filtered)}** of **{len(all_items)}** items"
+        f"Showing **{len(filtered)}** of "
+        f"**{len(all_items)}** items"
     )
     st.markdown("---")
 
-    # ── Display Items ──
     for item in filtered:
         emoji, days_left, badge, card_cls = \
             get_expiry_info(item['expiry_date'])
 
-        # ── EDIT MODE ──
         if st.session_state.edit_item_id == item['id']:
             with st.form(key=f"edit_{item['id']}"):
-                st.markdown(f"### ✏️ Editing: **{item['name']}**")
+                st.markdown(
+                    f"### ✏️ Editing: **{item['name']}**"
+                )
                 c1, c2 = st.columns(2)
                 with c1:
-                    nn = st.text_input("Name",     value=item['name'])
-                    nq = st.text_input("Quantity", value=item['quantity'])
+                    nn = st.text_input(
+                        "Name", value=item['name']
+                    )
+                    nq = st.text_input(
+                        "Quantity", value=item['quantity']
+                    )
                     cats = ["Dairy","Vegetables","Fruits",
                             "Meat & Seafood","Grains & Cereals",
-                            "Snacks","Beverages","Condiments","Other"]
+                            "Snacks","Beverages",
+                            "Condiments","Other"]
                     nc = st.selectbox(
                         "Category", cats,
                         index=cats.index(item['category'])
@@ -1097,159 +1474,129 @@ def pantry_page():
                     ne = st.date_input(
                         "Expiry Date",
                         value=datetime.strptime(
-                            item['expiry_date'], "%Y-%m-%d"
+                            item['expiry_date'],"%Y-%m-%d"
                         ).date()
                     )
                 s1, s2 = st.columns(2)
                 with s1:
                     if st.form_submit_button(
-                        "💾 Save", use_container_width=True
+                        "💾 Save",
+                        use_container_width=True
                     ):
                         update_item(
-                            item['id'], name=nn, quantity=nq,
-                            expiry_date=str(ne), category=nc
+                            item['id'], name=nn,
+                            quantity=nq,
+                            expiry_date=str(ne),
+                            category=nc
                         )
                         st.session_state.edit_item_id = None
                         st.rerun()
                 with s2:
                     if st.form_submit_button(
-                        "❌ Cancel", use_container_width=True
+                        "❌ Cancel",
+                        use_container_width=True
                     ):
                         st.session_state.edit_item_id = None
                         st.rerun()
-
-        # ── NORMAL VIEW WITH IMAGE ──
         else:
-            # Get image url and emoji for this item
             image_url = item['image_url'] \
-                        if 'image_url' in item.keys() \
-                        and item['image_url'] else None
+                if 'image_url' in item.keys() \
+                and item['image_url'] else None
             item_emoji = get_emoji(item['name'])
 
-            # Layout: image | details | actions
-            img_col, info_col, btn_col = st.columns([1, 5, 2])
+            img_col, info_col, btn_col = \
+                st.columns([1, 5, 2])
 
-            # ── Image Column ──
             with img_col:
                 if image_url:
                     st.markdown(f"""
-                        <div style='
-                            width:70px; height:70px;
-                            border-radius:12px;
-                            overflow:hidden;
-                            box-shadow:0 2px 10px rgba(0,0,0,0.1);
-                        '>
+                        <div style='width:65px;height:65px;
+                            border-radius:10px;overflow:hidden;
+                            box-shadow:0 2px 8px rgba(0,0,0,0.1);'>
                             <img src="{image_url}"
-                                 style='width:100%; height:100%;
-                                        object-fit:cover;'
-                                 onerror="this.style.display='none';
-                                          this.nextSibling.style.display='flex';"
-                            />
-                            <div style='
-                                display:none;
-                                width:70px; height:70px;
-                                background:{t["card2"]};
-                                border-radius:12px;
-                                align-items:center;
-                                justify-content:center;
-                                font-size:2rem;
-                            '>{item_emoji}</div>
+                                 style='width:100%;height:100%;
+                                        object-fit:cover;'/>
                         </div>
                     """, unsafe_allow_html=True)
                 else:
-                    # Emoji fallback
                     st.markdown(f"""
-                        <div style='
-                            width:70px; height:70px;
-                            background: linear-gradient(
+                        <div style='width:65px;height:65px;
+                            background:linear-gradient(
                                 135deg,#667eea22,#43e97b22
                             );
-                            border-radius:12px;
-                            display:flex;
-                            align-items:center;
+                            border-radius:10px;
+                            display:flex;align-items:center;
                             justify-content:center;
-                            font-size:2.2rem;
-                            border:1px solid {t["border"]};
-                        '>{item_emoji}</div>
+                            font-size:2rem;
+                            border:1px solid {t["border"]};'>
+                            {item_emoji}
+                        </div>
                     """, unsafe_allow_html=True)
 
-            # ── Info Column ──
             with info_col:
                 st.markdown(f"""
-                    <div class='item-card {card_cls} fade-in'
-                         style='margin-bottom:0; padding:12px 16px;'>
-                        <div style='display:flex;
-                                    align-items:center;
-                                    gap:8px; flex-wrap:wrap;'>
-                            <b style='font-size:1rem;
-                                      color:{t["text"]};'>
-                                {emoji} {item['name']}
-                            </b>
-                            <span class='badge badge-gray'>
-                                {item['category']}
-                            </span>
-                            <span class='badge {badge}'>
-                                {"EXPIRED!" if days_left < 0
-                                  else "Expires Today!" if days_left == 0
-                                  else f"{days_left}d left"}
-                            </span>
-                        </div>
-                        <div style='margin-top:6px;
-                                    color:{t["subtext"]};
-                                    font-size:0.82rem;'>
-                            📏 <b>{item['quantity']}</b>
-                            &nbsp;|&nbsp;
-                            📅 Expires: <b>{item['expiry_date']}</b>
-                            &nbsp;|&nbsp;
-                            🛒 Bought: <b>{item['purchase_date']}</b>
-                        </div>
+                    <div class='item-card {card_cls}'>
+                        <b style='font-size:0.95rem;'>
+                            {emoji} {item['name']}
+                        </b>
+                        <span class='badge badge-gray'
+                              style='margin-left:8px;'>
+                            {item['category']}
+                        </span>
+                        <span class='badge {badge}'
+                              style='margin-left:4px;'>
+                            {"EXPIRED!" if days_left < 0
+                              else f"{days_left}d left"}
+                        </span><br>
+                        <small>
+                            📏 {item['quantity']} &nbsp;|&nbsp;
+                            📅 {item['expiry_date']}
+                        </small>
                     </div>
                 """, unsafe_allow_html=True)
 
-            # ── Action Buttons Column ──
             with btn_col:
                 b1, b2, b3 = st.columns(3)
                 with b1:
                     if st.button(
-                        "✅",
-                        key=f"use_{item['id']}",
+                        "✅", key=f"use_{item['id']}",
                         help="Mark as used"
                     ):
                         log_usage(item['name'], was_wasted=False)
                         delete_item(item['id'])
-                        st.toast(
-                            f"✅ {item['name']} marked as used!"
-                        )
+                        st.toast(f"✅ {item['name']} used!")
                         st.rerun()
                 with b2:
                     if st.button(
-                        "✏️",
-                        key=f"edit_{item['id']}",
-                        help="Edit item"
+                        "✏️", key=f"edit_{item['id']}",
+                        help="Edit"
                     ):
                         st.session_state.edit_item_id = item['id']
                         st.rerun()
                 with b3:
                     if st.button(
-                        "🗑️",
-                        key=f"del_{item['id']}",
-                        help="Delete item"
+                        "🗑️", key=f"del_{item['id']}",
+                        help="Delete"
                     ):
                         log_usage(item['name'], was_wasted=True)
                         delete_item(item['id'])
                         st.toast(f"🗑️ {item['name']} removed!")
                         st.rerun()
 
-            st.markdown("<div style='margin-bottom:8px;'></div>",
-                        unsafe_allow_html=True)
+            st.markdown(
+                "<div style='margin-bottom:6px;'></div>",
+                unsafe_allow_html=True
+            )
+
 # ─────────────────────────────────────────
-# PAGE — ADD ITEM
+# PAGE — ADD ITEM (with Barcode Scanner)
 # ─────────────────────────────────────────
 
 def add_item_page():
     t = get_theme()
     st.markdown("""
-        <div class='hero-banner fade-in' style='padding:20px 25px;'>
+        <div class='hero-banner fade-in'
+             style='padding:20px 25px;'>
             <h2 style='margin:0;'>➕ Add New Item</h2>
             <p style='margin:4px 0 0; opacity:0.85;'>
                 Add items to your pantry
@@ -1257,76 +1604,128 @@ def add_item_page():
         </div>
     """, unsafe_allow_html=True)
 
+    # ── Barcode Scanner ──
+    with st.expander("📷 Scan Barcode (Optional)", expanded=
+                     st.session_state.get("show_scanner", False)):
+        st.info(
+            "📷 Upload a barcode image to auto-fill item details!"
+        )
+        uploaded = st.file_uploader(
+            "Upload barcode image",
+            type=["png","jpg","jpeg"],
+            key="barcode_upload"
+        )
+        if uploaded:
+            try:
+                from PIL import Image
+                from pyzbar.pyzbar import decode
+                import numpy as np
+
+                img  = Image.open(uploaded)
+                st.image(img, width=300, caption="Uploaded image")
+                codes = decode(img)
+
+                if codes:
+                    barcode_data = codes[0].data.decode("utf-8")
+                    st.success(f"✅ Barcode found: `{barcode_data}`")
+
+                    # Try to fetch product info
+                    with st.spinner("🔍 Looking up product..."):
+                        try:
+                            resp = requests.get(
+                                f"https://world.openfoodfacts.org"
+                                f"/api/v0/product/{barcode_data}.json",
+                                timeout=5
+                            )
+                            data = resp.json()
+                            if data.get("status") == 1:
+                                prod = data["product"]
+                                p_name = prod.get(
+                                    "product_name", ""
+                                )
+                                st.session_state.scan_result = {
+                                    "name": p_name,
+                                    "barcode": barcode_data
+                                }
+                                st.success(
+                                    f"🎉 Found: **{p_name}**"
+                                )
+                            else:
+                                st.warning(
+                                    "⚠️ Product not found in "
+                                    "database. Enter details manually."
+                                )
+                        except Exception:
+                            st.warning(
+                                "⚠️ Could not fetch product info."
+                            )
+                else:
+                    st.warning(
+                        "⚠️ No barcode detected. "
+                        "Try a clearer image!"
+                    )
+            except ImportError:
+                st.error(
+                    "❌ Install pyzbar: "
+                    "`pip install pyzbar pillow`"
+                )
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
+        # Pre-fill from scan result
+        scan = st.session_state.get("scan_result") or {}
 
-        # ── Live Image Preview ──
         st.markdown("#### 🔍 Item Preview")
-
-        # Item name input OUTSIDE form for live preview
         name = st.text_input(
             "Item Name *",
+            value=scan.get("name", ""),
             placeholder="e.g. Milk, Eggs, Spinach",
             key="item_name_input"
         )
 
-        # Show image preview as user types
         if name and len(name) >= 3:
             with st.spinner("🔍 Fetching image..."):
-                image_url, emoji = get_food_image(name)
+                image_url, emoji_icon = get_food_image(name)
 
-            preview_col1, preview_col2 = st.columns([1, 2])
-            with preview_col1:
+            p1, p2 = st.columns([1, 2])
+            with p1:
                 if image_url:
-                    st.image(
-                        image_url,
-                        width=150,
-                        caption=f"{emoji} {name}"
-                    )
+                    st.image(image_url, width=130,
+                             caption=f"{emoji_icon} {name}")
                 else:
                     st.markdown(f"""
-                        <div style='
-                            width:150px; height:150px;
+                        <div style='width:130px;height:130px;
                             background:{t["card2"]};
                             border-radius:12px;
-                            display:flex;
-                            align-items:center;
+                            display:flex;align-items:center;
                             justify-content:center;
-                            font-size:4rem;
-                            border:2px dashed {t["border"]};
-                        '>{emoji}</div>
+                            font-size:3.5rem;
+                            border:2px dashed {t["border"]};'>
+                            {emoji_icon}
+                        </div>
                     """, unsafe_allow_html=True)
-
-            with preview_col2:
+            with p2:
                 if image_url:
                     st.success(f"✅ Image found for **{name}**!")
                 else:
-                    st.info(
-                        f"{emoji} No image found — "
-                        f"emoji will be used instead!"
-                    )
+                    st.info(f"{emoji_icon} Using emoji preview")
         else:
-            # Placeholder before typing
             st.markdown(f"""
-                <div style='
-                    width:100%; height:120px;
+                <div style='width:100%;height:100px;
                     background:{t["card2"]};
                     border-radius:12px;
-                    display:flex;
-                    align-items:center;
+                    display:flex;align-items:center;
                     justify-content:center;
                     border:2px dashed {t["border"]};
                     color:{t["subtext"]};
-                    font-size:0.9rem;
-                    margin-bottom:16px;
-                '>
+                    font-size:0.85rem;
+                    margin-bottom:12px;'>
                     🖼️ Type item name to see preview
                 </div>
             """, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ── Rest of the form ──
         with st.form("add_form", clear_on_submit=True):
             c1, c2 = st.columns(2)
             with c1:
@@ -1336,9 +1735,9 @@ def add_item_page():
                 )
             with c2:
                 category = st.selectbox("Category *", [
-                    "Dairy", "Vegetables", "Fruits",
-                    "Meat & Seafood", "Grains & Cereals",
-                    "Snacks", "Beverages", "Condiments", "Other"
+                    "Dairy","Vegetables","Fruits",
+                    "Meat & Seafood","Grains & Cereals",
+                    "Snacks","Beverages","Condiments","Other"
                 ])
             c3, c4 = st.columns(2)
             with c3:
@@ -1364,21 +1763,21 @@ def add_item_page():
                 elif expiry_date < purchase_date:
                     st.error("❌ Expiry before purchase date!")
                 elif expiry_date < date.today():
-                    st.error("❌ Item is already expired!")
+                    st.error("❌ Item already expired!")
                 else:
-                    # Fetch image URL to save in DB
                     img_url, _ = get_food_image(item_name)
-
                     add_item(
-                        name=item_name,
-                        quantity=quantity,
+                        name=item_name, quantity=quantity,
                         purchase_date=str(purchase_date),
                         expiry_date=str(expiry_date),
                         category=category,
                         image_url=img_url or ""
                     )
+                    st.session_state.scan_result = None
+                    st.session_state.show_scanner = False
                     st.success(f"✅ **{item_name}** added!")
                     confetti()
+
 # ─────────────────────────────────────────
 # PAGE — AI RECIPES
 # ─────────────────────────────────────────
@@ -1386,7 +1785,8 @@ def add_item_page():
 def ai_recipes_page():
     t = get_theme()
     st.markdown("""
-        <div class='hero-banner fade-in' style='padding:20px 25px;'>
+        <div class='hero-banner fade-in'
+             style='padding:20px 25px;'>
             <h2 style='margin:0;'>🤖 AI Recipe Suggestions</h2>
             <p style='margin:4px 0 0; opacity:0.85;'>
                 Smart recipes from your pantry
@@ -1398,7 +1798,7 @@ def ai_recipes_page():
     expiring_items = get_expiring_items(7)
 
     if not all_items:
-        st.info("🛒 Add some items to your pantry first!")
+        st.info("🛒 Add some items first!")
         return
 
     c1, c2 = st.columns(2)
@@ -1415,7 +1815,8 @@ def ai_recipes_page():
     with c1:
         meal = st.selectbox(
             "🍽️ Meal",
-            ["Any","Breakfast","Lunch","Dinner","Snack","Dessert"]
+            ["Any","Breakfast","Lunch",
+             "Dinner","Snack","Dessert"]
         )
     with c2:
         diet = st.selectbox(
@@ -1450,12 +1851,14 @@ def ai_recipes_page():
     for msg in st.session_state.chat_history:
         if msg["role"] == "user":
             st.markdown(
-                f"<div class='chat-user'>{msg['content']}</div>",
+                f"<div class='chat-user'>"
+                f"{msg['content']}</div>",
                 unsafe_allow_html=True
             )
         else:
             st.markdown(
-                f"<div class='chat-ai'>{msg['content']}</div>",
+                f"<div class='chat-ai'>"
+                f"{msg['content']}</div>",
                 unsafe_allow_html=True
             )
 
@@ -1465,16 +1868,18 @@ def ai_recipes_page():
             st.rerun()
 
     user_input = st.chat_input(
-        "Ask anything — 'make it spicy', 'no onions', 'quick meal'"
+        "Ask — 'make it spicy', 'no onions', 'quick meal'"
     )
     if user_input:
         st.session_state.chat_history.append({
             "role": "user", "content": user_input
         })
         with st.spinner("🤖 Thinking..."):
-            response, st.session_state.chat_history = chat_with_ai(
-                user_input, st.session_state.chat_history
-            )
+            response, st.session_state.chat_history = \
+                chat_with_ai(
+                    user_input,
+                    st.session_state.chat_history
+                )
         st.rerun()
 
 # ─────────────────────────────────────────
@@ -1490,6 +1895,214 @@ def dashboard_page():
     )
 
 # ─────────────────────────────────────────
+# PAGE — FAMILY MODE
+# ─────────────────────────────────────────
+
+def family_page():
+    t = get_theme()
+    st.markdown("""
+        <div class='hero-banner fade-in'
+             style='padding:20px 25px;'>
+            <h2 style='margin:0;'>👨‍👩‍👧 Family Mode</h2>
+            <p style='margin:4px 0 0; opacity:0.85;'>
+                Share pantry with your family
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    user = st.session_state.user_data
+    family_id = user.get("family_id")
+
+    tab1, tab2, tab3 = st.tabs([
+        "👥 My Family",
+        "➕ Create Family",
+        "🔗 Join Family"
+    ])
+
+    # ── My Family Tab ──
+    with tab1:
+        if not family_id:
+            st.info(
+                "You're not in a family yet! "
+                "Create or join one below."
+            )
+        else:
+            members = get_family_members(family_id)
+            st.markdown(
+                f"### 👨‍👩‍👧 Family ID: `{family_id}`"
+            )
+            st.markdown(
+                f"**{len(members)} member(s)** in your family"
+            )
+            st.markdown("---")
+            for m in members:
+                last = m.get('last_login', 'Never') or 'Never'
+                role_badge = "👑" if "admin" in \
+                             (m.get('role') or '') else "👤"
+                st.markdown(f"""
+                    <div class='fm-card' style='padding:14px;'>
+                        <b style='color:{t["text"]};'>
+                            {role_badge} {m['full_name'] or
+                                          m['username']}
+                        </b>
+                        <span style='color:{t["subtext"]};
+                                     font-size:0.8rem;
+                                     margin-left:8px;'>
+                            @{m['username']}
+                        </span><br>
+                        <small style='color:{t["subtext"]};'>
+                            Last active: {last}
+                        </small>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    # ── Create Family Tab ──
+    with tab2:
+        with st.form("create_family_form"):
+            family_name = st.text_input(
+                "Family Name *",
+                placeholder="e.g. The Sharma Family"
+            )
+            submitted = st.form_submit_button(
+                "🏠 Create Family",
+                use_container_width=True
+            )
+            if submitted:
+                if not family_name:
+                    st.error("❌ Enter a family name!")
+                elif family_id:
+                    st.warning(
+                        "⚠️ You're already in a family!"
+                    )
+                else:
+                    fid = create_family(
+                        family_name, user['id']
+                    )
+                    st.success(
+                        f"✅ Family created! "
+                        f"Share ID **{fid}** with family members"
+                    )
+                    st.balloons()
+
+    # ── Join Family Tab ──
+    with tab3:
+        with st.form("join_family_form"):
+            fid_input = st.number_input(
+                "Family ID *",
+                min_value=1, step=1
+            )
+            submitted = st.form_submit_button(
+                "🔗 Join Family",
+                use_container_width=True
+            )
+            if submitted:
+                if family_id:
+                    st.warning(
+                        "⚠️ You're already in a family!"
+                    )
+                else:
+                    ok, msg = join_family(
+                        user['id'], int(fid_input)
+                    )
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+
+# ─────────────────────────────────────────
+# PAGE — SETTINGS
+# ─────────────────────────────────────────
+
+def settings_page():
+    t = get_theme()
+    st.markdown("""
+        <div class='hero-banner fade-in'
+             style='padding:20px 25px;'>
+            <h2 style='margin:0;'>⚙️ Settings</h2>
+            <p style='margin:4px 0 0; opacity:0.85;'>
+                Manage your account
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    user = st.session_state.user_data
+
+    tab1, tab2 = st.tabs([
+        "👤 My Profile", "🔒 Change Password"
+    ])
+
+    with tab1:
+        st.markdown(f"""
+            <div class='fm-card'>
+                <h3>👤 Profile Info</h3>
+                <p><b>Username:</b>
+                   @{user.get('username','')}</p>
+                <p><b>Full Name:</b>
+                   {user.get('full_name','') or 'Not set'}</p>
+                <p><b>Email:</b>
+                   {user.get('email','') or 'Not set'}</p>
+                <p><b>Role:</b>
+                   {user.get('role','member')}</p>
+                <p><b>Member since:</b>
+                   {user.get('created_at','').split(' ')[0]}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # All users (admin only)
+        if user.get('role') == 'admin':
+            st.markdown("### 👥 All Users (Admin View)")
+            all_users = get_all_users()
+            for u in all_users:
+                st.markdown(f"""
+                    <div class='fm-card'
+                         style='padding:12px 16px;'>
+                        <b style='color:{t["text"]};'>
+                            👤 {u['username']}
+                        </b>
+                        <span style='color:{t["subtext"]};
+                                     font-size:0.8rem;
+                                     margin-left:8px;'>
+                            {u['full_name'] or ''} |
+                            {u['role']}
+                        </span>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    with tab2:
+        with st.form("change_pass_form"):
+            old_pass = st.text_input(
+                "Current Password",
+                type="password"
+            )
+            new_pass = st.text_input(
+                "New Password",
+                type="password"
+            )
+            confirm_pass = st.text_input(
+                "Confirm New Password",
+                type="password"
+            )
+            submitted = st.form_submit_button(
+                "🔒 Update Password",
+                use_container_width=True
+            )
+            if submitted:
+                if new_pass != confirm_pass:
+                    st.error("❌ Passwords don't match!")
+                elif len(new_pass) < 6:
+                    st.error(
+                        "❌ Password must be 6+ characters!"
+                    )
+                else:
+                    ok, msg = update_password(
+                        user['id'], old_pass, new_pass
+                    )
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+
+# ─────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────
 
@@ -1500,6 +2113,9 @@ def main():
         login_page()
         return
 
+    # Notification bell (fixed top right)
+    render_notification_bell()
+
     page = render_sidebar()
 
     if   page == "🏠 Home":       home_page()
@@ -1507,6 +2123,8 @@ def main():
     elif page == "➕ Add Item":   add_item_page()
     elif page == "🤖 AI Recipes": ai_recipes_page()
     elif page == "📊 Dashboard":  dashboard_page()
+    elif page == "👨‍👩‍👧 Family":  family_page()
+    elif page == "⚙️ Settings":  settings_page()
 
 if __name__ == "__main__":
     main()
