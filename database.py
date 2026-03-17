@@ -47,13 +47,27 @@ def create_tables():
 
     # Table 2: tracks item usage history (used vs wasted)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usage_history (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_name   TEXT NOT NULL,
-            used_date   DATE NOT NULL,
-            was_wasted  BOOLEAN NOT NULL
-        )
-    """)
+            CREATE TABLE IF NOT EXISTS pantry_items (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL,
+                quantity      TEXT NOT NULL,
+                purchase_date DATE NOT NULL,
+                expiry_date   DATE NOT NULL,
+                category      TEXT NOT NULL,
+                image_url     TEXT DEFAULT ''
+            )
+        """)
+
+        # Add image_url column if it doesn't exist
+        # (for existing databases that were created before)
+    try:
+        cursor.execute("""
+            ALTER TABLE pantry_items
+            ADD COLUMN image_url TEXT DEFAULT ''
+        """)
+        conn.commit()
+    except:
+        pass  # Column already exists, no problem!
 
     conn.commit()
     conn.close()
@@ -64,24 +78,17 @@ def create_tables():
 # ADD ITEM
 # ─────────────────────────────────────────
 
-def add_item(name, quantity, purchase_date, expiry_date, category):
-    """
-    Adds a new item to the pantry.
-
-    Parameters:
-        name          (str)  : Item name e.g. "Milk"
-        quantity      (str)  : e.g. "1 litre" or "500g"
-        purchase_date (str)  : Format "YYYY-MM-DD"
-        expiry_date   (str)  : Format "YYYY-MM-DD"
-        category      (str)  : e.g. "Dairy", "Vegetables"
-    """
+def add_item(name, quantity, purchase_date,
+             expiry_date, category, image_url=""):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        INSERT INTO pantry_items (name, quantity, purchase_date, expiry_date, category)
-        VALUES (?, ?, ?, ?, ?)
-    """, (name, quantity, purchase_date, expiry_date, category))
+        INSERT INTO pantry_items
+        (name, quantity, purchase_date, expiry_date, category, image_url)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, quantity, purchase_date,
+          expiry_date, category, image_url))
 
     conn.commit()
     conn.close()
