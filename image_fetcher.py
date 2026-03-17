@@ -1,140 +1,186 @@
-# image_fetcher.py
-# Fetches food images from Wikipedia API
-# No API key needed — completely free!
-
+# image_fetcher.py — Fixed with User-Agent header
 import requests
 
+# ── Required header for Wikipedia API ──
+HEADERS = {
+    "User-Agent": "FreshMind/1.0 (food pantry app; "
+                  "contact@freshmind.com)"
+}
+
 # ─────────────────────────────────────────
-# EMOJI FALLBACK MAP
+# EMOJI MAP
 # ─────────────────────────────────────────
-# Used when Wikipedia has no image
 
 EMOJI_MAP = {
-    # Dairy
-    "milk":        "🥛", "cheese":    "🧀", "butter":   "🧈",
-    "yogurt":      "🥛", "cream":     "🥛", "curd":     "🥛",
+    "milk": "🥛", "egg": "🥚", "eggs": "🥚",
+    "bread": "🍞", "butter": "🧈", "cheese": "🧀",
+    "apple": "🍎", "banana": "🍌", "orange": "🍊",
+    "mango": "🥭", "grapes": "🍇", "strawberry": "🍓",
+    "tomato": "🍅", "potato": "🥔", "onion": "🧅",
+    "garlic": "🧄", "carrot": "🥕", "spinach": "🥬",
+    "broccoli": "🥦", "corn": "🌽", "pepper": "🌶️",
+    "chicken": "🍗", "meat": "🥩", "fish": "🐟",
+    "rice": "🍚", "pasta": "🍝", "flour": "🌾",
+    "sugar": "🍬", "salt": "🧂", "oil": "🫙",
+    "coffee": "☕", "tea": "🍵", "juice": "🧃",
+    "yogurt": "🍶", "paneer": "🧀", "ghee": "🧈",
+    "chocolate": "🍫", "lemon": "🍋", "avocado": "🥑",
+    "mushroom": "🍄", "cucumber": "🥒", "coconut": "🥥",
+    "dal": "🫘", "lentils": "🫘", "roti": "🫓",
+    "ginger": "🫚", "turmeric": "🌿", "cumin": "🌿",
+    "watermelon": "🍉", "pineapple": "🍍",
+}
 
-    # Vegetables
-    "tomato":      "🍅", "potato":    "🥔", "onion":    "🧅",
-    "garlic":      "🧄", "carrot":    "🥕", "broccoli": "🥦",
-    "spinach":     "🥬", "lettuce":   "🥬", "cucumber": "🥒",
-    "pepper":      "🫑", "corn":      "🌽", "mushroom": "🍄",
-    "eggplant":    "🍆", "pumpkin":   "🎃", "beans":    "🫘",
+# ─────────────────────────────────────────
+# INDIAN FOOD TRANSLATION MAP
+# ─────────────────────────────────────────
 
-    # Fruits
-    "apple":       "🍎", "banana":    "🍌", "orange":   "🍊",
-    "mango":       "🥭", "grapes":    "🍇", "lemon":    "🍋",
-    "strawberry":  "🍓", "watermelon":"🍉", "pineapple":"🍍",
-    "cherry":      "🍒", "peach":     "🍑", "pear":     "🍐",
-    "coconut":     "🥥", "kiwi":      "🥝", "avocado":  "🥑",
-
-    # Meat & Seafood
-    "chicken":     "🍗", "meat":      "🥩", "fish":     "🐟",
-    "egg":         "🥚", "eggs":      "🥚", "shrimp":   "🍤",
-    "beef":        "🥩", "pork":      "🥩", "lamb":     "🥩",
-
-    # Grains
-    "rice":        "🍚", "bread":     "🍞", "wheat":    "🌾",
-    "pasta":       "🍝", "noodles":   "🍜", "flour":    "🌾",
-    "oats":        "🌾", "cereal":    "🥣",
-
-    # Beverages
-    "water":       "💧", "juice":     "🧃", "coffee":   "☕",
-    "tea":         "🍵", "milk":      "🥛",
-
-    # Condiments
-    "salt":        "🧂", "sugar":     "🍬", "oil":      "🫙",
-    "sauce":       "🫙", "honey":     "🍯", "vinegar":  "🫙",
-
-    # Snacks
-    "chips":       "🍟", "chocolate": "🍫", "biscuit":  "🍪",
-    "cookie":      "🍪", "cake":      "🎂", "nuts":     "🥜",
+INDIAN_FOOD_MAP = {
+    "atta": "wheat flour", "maida": "refined flour",
+    "besan": "chickpea flour", "sooji": "semolina",
+    "poha": "flattened rice", "dal": "lentil",
+    "chana": "chickpea", "rajma": "kidney bean",
+    "moong": "mung bean", "masoor": "red lentil",
+    "urad": "urad bean", "aloo": "potato",
+    "pyaaz": "onion", "tamatar": "tomato",
+    "palak": "spinach", "gobi": "cauliflower",
+    "baingan": "eggplant", "bhindi": "okra",
+    "lauki": "bottle gourd", "karela": "bitter gourd",
+    "methi": "fenugreek", "doodh": "milk",
+    "dahi": "yogurt", "makhan": "butter",
+    "haldi": "turmeric", "jeera": "cumin",
+    "dhania": "coriander", "mirchi": "chili pepper",
+    "adrak": "ginger", "lehsun": "garlic",
+    "roti": "roti bread", "chapati": "chapati bread",
+    "paratha": "paratha bread", "idli": "idli",
+    "dosa": "dosa", "sambar": "sambar",
+    "biryani": "biryani", "paneer": "paneer cheese",
+    "ghee": "ghee butter",
 }
 
 def get_emoji(item_name):
-    """
-    Returns emoji for a food item.
-    Checks if any key word matches the item name.
-    """
-    name_lower = item_name.lower()
+    """Returns best matching emoji for food item"""
+    name_lower = item_name.lower().strip()
     for key, emoji in EMOJI_MAP.items():
         if key in name_lower:
             return emoji
-    return "🛒"  # default emoji
+    return "🥘"
 
+def translate_for_search(item_name):
+    """Translates Indian food names to English"""
+    name_lower = item_name.lower().strip()
+    if name_lower in INDIAN_FOOD_MAP:
+        return INDIAN_FOOD_MAP[name_lower]
+    for indian, english in INDIAN_FOOD_MAP.items():
+        if indian in name_lower:
+            return english
+    return item_name
 
 def get_food_image(item_name):
     """
-    Fetches food image from Wikipedia API.
-    No API key needed — completely free!
-
-    Parameters:
-        item_name (str): Name of the food item
+    Fetches food image — tries 3 sources.
 
     Returns:
-        tuple: (image_url, emoji)
-               image_url → Wikipedia image URL or None
-               emoji     → fallback emoji always included
+        tuple: (image_url or None, emoji)
     """
-    emoji = get_emoji(item_name)
+    emoji       = get_emoji(item_name)
+    search_term = translate_for_search(item_name)
 
-    try:
-        # Clean up item name for Wikipedia search
-        search_term = item_name.strip().title()
+    # Try Wikipedia first
+    url = _try_wikipedia(search_term)
+    if url:
+        return url, emoji
 
-        # Wikipedia REST API — get page summary + image
-        url = (
-            f"https://en.wikipedia.org/api/rest_v1/"
-            f"page/summary/{search_term}"
-        )
+    # Try Open Food Facts
+    url = _try_open_food_facts(search_term)
+    if url:
+        return url, emoji
 
-        response = requests.get(url, timeout=5)
-
-        if response.status_code == 200:
-            data = response.json()
-
-            # Check if Wikipedia returned a thumbnail
-            if "thumbnail" in data:
-                image_url = data["thumbnail"]["source"]
-
-                # Upgrade to higher resolution image
-                # Wikipedia thumbnails are small by default
-                image_url = image_url.replace(
-                    "/thumb/", "/"
-                ).rsplit("/", 1)[0]
-
-                # Fallback to original thumbnail if
-                # high-res doesn't work
-                image_url = data["thumbnail"]["source"]
-                return image_url, emoji
-
-        # If Wikipedia has no image try with "food" appended
-        url2 = (
-            f"https://en.wikipedia.org/api/rest_v1/"
-            f"page/summary/{search_term}_food"
-        )
-        response2 = requests.get(url2, timeout=5)
-
-        if response2.status_code == 200:
-            data2 = response2.json()
-            if "thumbnail" in data2:
-                return data2["thumbnail"]["source"], emoji
-
-    except Exception as e:
-        print(f"Image fetch failed for {item_name}: {e}")
-
-    # Return None if no image found — emoji will be used
     return None, emoji
 
+def _try_wikipedia(search_term):
+    """Fetches image from Wikipedia with proper headers"""
+    try:
+        # Step 1 — Search for page
+        search_resp = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            headers=HEADERS,
+            params={
+                "action":   "query",
+                "list":     "search",
+                "srsearch": f"{search_term} food",
+                "format":   "json",
+                "srlimit":  1
+            },
+            timeout=8
+        )
 
-if __name__ == "__main__":
-    # Quick test
-    test_items = [
-        "Milk", "Apple", "Spinach",
-        "Chicken", "Rice", "Banana"
-    ]
-    print("🧪 Testing Wikipedia Image Fetcher...\n")
-    for item in test_items:
-        url, emoji = get_food_image(item)
-        print(f"{emoji} {item}:")
-        print(f"   URL: {url or 'No image found'}\n")
+        if search_resp.status_code != 200:
+            return None
+
+        results = search_resp.json().get(
+            "query", {}
+        ).get("search", [])
+
+        if not results:
+            return None
+
+        # Step 2 — Get page summary with image
+        page_title = results[0]["title"]
+        summary_resp = requests.get(
+            f"https://en.wikipedia.org/api/rest_v1"
+            f"/page/summary/{page_title.replace(' ', '_')}",
+            headers=HEADERS,
+            timeout=8
+        )
+
+        if summary_resp.status_code != 200:
+            return None
+
+        data      = summary_resp.json()
+        thumbnail = data.get("thumbnail", {})
+
+        if thumbnail:
+            img_url = thumbnail.get("source", "")
+            # Get better quality image
+            img_url = img_url.replace("/320px-", "/400px-")
+            return img_url if img_url else None
+
+    except Exception as e:
+        print(f"Wikipedia error: {e}")
+
+    return None
+
+def _try_open_food_facts(search_term):
+    """Fetches image from Open Food Facts"""
+    try:
+        resp = requests.get(
+            "https://world.openfoodfacts.org/cgi/search.pl",
+            headers=HEADERS,
+            params={
+                "search_terms": search_term,
+                "search_simple": 1,
+                "action":        "process",
+                "json":          1,
+                "page_size":     5,
+            },
+            timeout=8
+        )
+
+        if resp.status_code != 200:
+            return None
+
+        products = resp.json().get("products", [])
+        for product in products:
+            img = (
+                product.get("image_front_small_url") or
+                product.get("image_url") or
+                product.get("image_small_url")
+            )
+            if img and img.startswith("http"):
+                return img
+
+    except Exception as e:
+        print(f"OpenFoodFacts error: {e}")
+
+    return None

@@ -1,10 +1,37 @@
-streamlit
+# FreshMind — Python Dependencies
+
+# ── Core UI ──
+streamlit>=1.32.0
+
+# ── AI / LLM ──
 groq
+
+# ── Database ──
+# sqlite3 is built-in to Python, no install needed
+
+# ── Notifications ──
 schedule
 plyer
+
+# ── Charts ──
 plotly
-requests
+
+# ── Data ──
 pandas
+
+# ── ML (future use) ──
 scikit-learn
+
+# ── Image Fetching ──
+requests
+
+# ── Barcode Scanner ──
+pyzbar
+pillow
+opencv-python-headless
+
+# ── Environment Variables ──
 python-dotenv
 
+# ── Auth ──
+# hashlib is built-in to Python, no install needed
