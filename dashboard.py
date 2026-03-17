@@ -285,4 +285,4 @@ def render_dashboard(all_items, expiring_items,
                 }}
             }});
         </script>
-    """, height=900)
+    """, height=1400)
