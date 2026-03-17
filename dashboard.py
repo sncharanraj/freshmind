@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 # dashboard.py — FreshMind v2.0
 # Full Chart.js animated dashboard
 
@@ -288,4 +286,3 @@ def render_dashboard(all_items, expiring_items,
             }});
         </script>
     """, height=1400)
->>>>>>> Stashed changes
