@@ -1,0 +1,9 @@
+# FreshMind Backend Requirements
+flask
+flask-cors
+pyjwt
+python-dotenv
+requests
+groq
+schedule
+plyer
