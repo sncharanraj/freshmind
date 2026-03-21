@@ -1,5 +1,0 @@
-streamlit
-anthropic
-schedule
-plyer
-plotly

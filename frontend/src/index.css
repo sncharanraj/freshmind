@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { font-family: 'Poppins', sans-serif; }
+  body { @apply bg-light dark:bg-dark transition-colors duration-300; }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-dark-card rounded-2xl p-5
+           shadow-md border border-light-border dark:border-dark-border
+           transition-all duration-200;
+  }
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary to-success text-white
+           px-4 py-2 rounded-xl font-medium
+           hover:opacity-90 hover:-translate-y-0.5
+           transition-all duration-150 active:scale-95;
+  }
+  .btn-ghost {
+    @apply bg-white dark:bg-dark-card border border-light-border
+           dark:border-dark-border text-gray-700 dark:text-gray-200
+           px-4 py-2 rounded-xl font-medium
+           hover:border-primary hover:-translate-y-0.5
+           transition-all duration-150 active:scale-95;
+  }
+  .input {
+    @apply w-full bg-white dark:bg-dark-card2
+           border border-light-border dark:border-dark-border
+           rounded-xl px-4 py-2.5 text-sm
+           text-gray-800 dark:text-white
+           placeholder-gray-400 dark:placeholder-gray-500
+           focus:outline-none focus:border-primary
+           focus:ring-2 focus:ring-primary/20
+           transition-all duration-150;
+  }
+  .badge {
+    @apply inline-block px-2.5 py-0.5 rounded-full
+           text-xs font-semibold;
+  }
+  .badge-red    { @apply bg-red-100   text-red-700; }
+  .badge-orange { @apply bg-orange-100 text-orange-700; }
+  .badge-green  { @apply bg-green-100 text-green-700; }
+  .badge-gray   { @apply bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400; }
+
+  .sidebar-btn {
+    @apply w-full flex items-center gap-3 px-3 py-2.5
+           rounded-xl text-sm font-medium
+           text-gray-600 dark:text-gray-300
+           hover:bg-gray-100 dark:hover:bg-dark-card2
+           transition-all duration-150 cursor-pointer;
+  }
+  .sidebar-btn.active {
+    @apply bg-gradient-to-r from-primary to-success
+           text-white shadow-md;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #667eea44;
+  border-radius: 3px;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  animation: fadeIn 0.15s ease;
+}
+.modal-box {
+  animation: slideUp 0.2s ease;
+}
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.92); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Count-up */
+.count-num {
+  transition: all 0.05s linear;
+}
+
+/* Slide in from right (notification panel) */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Remove slow transitions on theme switch */
+.no-transition * {
+  transition: none !important;
+}
+
+/* Food rain */
+@keyframes foodRain {
+  0%   { transform: translateY(-30px) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.4; }
+  90%  { opacity: 0.2; }
+  100% { transform: translateY(150px) rotate(360deg); opacity: 0; }
+}
+.food-drop {
+  position: absolute;
+  animation: foodRain linear infinite;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Mobile sidebar slide-in */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+.animate-slide-in-left {
+  animation: slideInLeft 0.2s ease forwards;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .card { @apply rounded-xl p-4; }
+}
