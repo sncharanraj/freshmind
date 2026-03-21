@@ -84,6 +84,20 @@
   transition: all 0.05s linear;
 }
 
+/* Slide in from right (notification panel) */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Remove slow transitions on theme switch */
+.no-transition * {
+  transition: none !important;
+}
+
 /* Food rain */
 @keyframes foodRain {
   0%   { transform: translateY(-30px) rotate(0deg); opacity: 0; }

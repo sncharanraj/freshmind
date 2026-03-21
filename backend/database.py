@@ -1,303 +1,217 @@
-# database.py
-# Person A owns this file
-# This file handles all database operations for FreshMind
-
+# database.py — FreshMind with per-user data isolation
 import sqlite3
-from datetime import date, timedelta
+import os
 
-# ─────────────────────────────────────────
-# DATABASE CONNECTION
-# ─────────────────────────────────────────
+DB_PATH = os.path.join(os.path.dirname(__file__), "freshmind.db")
 
-def get_connection():
-    """
-    Creates and returns a connection to the SQLite database.
-    The database file 'freshmind.db' will be auto-created
-    if it doesn't already exist.
-    """
-    conn = sqlite3.connect("freshmind.db")
-    conn.row_factory = sqlite3.Row  # lets us access columns by name
+def get_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     return conn
 
-
-# ─────────────────────────────────────────
-# TABLE SETUP
-# ─────────────────────────────────────────
-
 def create_tables():
-    """
-    Creates the pantry_items and usage_history tables
-    if they don't already exist.
-    Call this once when the app starts.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = get_conn()
+    c = conn.cursor()
 
-    # Table 1: stores all pantry items
-    cursor.execute("""
+    # ── pantry_items — now has user_id ──
+    c.execute("""
         CREATE TABLE IF NOT EXISTS pantry_items (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            name          TEXT NOT NULL,
-            quantity      TEXT NOT NULL,
-            purchase_date DATE NOT NULL,
-            expiry_date   DATE NOT NULL,
-            category      TEXT NOT NULL
+            user_id       INTEGER NOT NULL DEFAULT 0,
+            name          TEXT    NOT NULL,
+            quantity      TEXT    NOT NULL,
+            purchase_date TEXT    NOT NULL,
+            expiry_date   TEXT    NOT NULL,
+            category      TEXT    NOT NULL DEFAULT 'Other',
+            image_url     TEXT    DEFAULT ''
         )
     """)
 
-    # Table 2: tracks item usage history (used vs wasted)
-    cursor.execute("""
-            CREATE TABLE IF NOT EXISTS pantry_items (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                name          TEXT NOT NULL,
-                quantity      TEXT NOT NULL,
-                purchase_date DATE NOT NULL,
-                expiry_date   DATE NOT NULL,
-                category      TEXT NOT NULL,
-                image_url     TEXT DEFAULT ''
-            )
-        """)
+    # ── usage_history — now has user_id ──
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS usage_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL DEFAULT 0,
+            item_name  TEXT    NOT NULL,
+            used_date  TEXT    NOT NULL,
+            was_wasted INTEGER NOT NULL DEFAULT 0
+        )
+    """)
 
-        # Add image_url column if it doesn't exist
-        # (for existing databases that were created before)
+    # ── login_history — new table ──
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS login_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            username   TEXT    NOT NULL,
+            login_time TEXT    NOT NULL,
+            ip_address TEXT    DEFAULT ''
+        )
+    """)
+
+    # ── Migration: add user_id column if old DB exists ──
     try:
-        cursor.execute("""
-            ALTER TABLE pantry_items
-            ADD COLUMN image_url TEXT DEFAULT ''
-        """)
-        conn.commit()
-    except:
-        pass  # Column already exists, no problem!
+        c.execute("ALTER TABLE pantry_items ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        c.execute("ALTER TABLE usage_history ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
-    print("✅ Tables created successfully!")
-
 
 # ─────────────────────────────────────────
-# ADD ITEM
+# PANTRY — all filtered by user_id
 # ─────────────────────────────────────────
 
-def add_item(name, quantity, purchase_date,
-             expiry_date, category, image_url=""):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
+def add_item(name, quantity, purchase_date, expiry_date,
+             category="Other", image_url="", user_id=0):
+    conn = get_conn()
+    conn.execute("""
         INSERT INTO pantry_items
-        (name, quantity, purchase_date, expiry_date, category, image_url)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (name, quantity, purchase_date,
+            (user_id, name, quantity, purchase_date,
+             expiry_date, category, image_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, name, quantity, purchase_date,
           expiry_date, category, image_url))
-
     conn.commit()
     conn.close()
-    print(f"✅ '{name}' added to pantry!")
 
-
-# ─────────────────────────────────────────
-# GET ALL ITEMS
-# ─────────────────────────────────────────
-
-def get_all_items():
-    """
-    Returns all items currently in the pantry.
-    Person B will call this to display the pantry table in the UI.
-
-    Returns:
-        List of rows (each row is like a dictionary)
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
+def get_all_items(user_id=0):
+    conn = get_conn()
+    rows = conn.execute("""
         SELECT * FROM pantry_items
+        WHERE user_id = ?
         ORDER BY expiry_date ASC
-    """)
-
-    items = cursor.fetchall()
+    """, (user_id,)).fetchall()
     conn.close()
-    return items
+    return rows
 
-
-# ─────────────────────────────────────────
-# GET EXPIRING ITEMS
-# ─────────────────────────────────────────
-
-def get_expiring_items(days=7):
-    """
-    Returns items expiring within the next 'days' days.
-    Used by notifier.py for alerts and ai_recipes.py for
-    priority recipe suggestions.
-
-    Parameters:
-        days (int): How many days ahead to check (default: 7)
-
-    Returns:
-        List of rows expiring within that window
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    today = date.today()
-    deadline = today + timedelta(days=days)
-
-    cursor.execute("""
+def get_expiring_items(days=7, user_id=0):
+    conn = get_conn()
+    rows = conn.execute("""
         SELECT * FROM pantry_items
-        WHERE expiry_date BETWEEN ? AND ?
+        WHERE user_id = ?
+          AND date(expiry_date) <= date('now', ? || ' days')
         ORDER BY expiry_date ASC
-    """, (str(today), str(deadline)))
-
-    items = cursor.fetchall()
+    """, (user_id, str(days))).fetchall()
     conn.close()
-    return items
+    return rows
 
-
-# ─────────────────────────────────────────
-# DELETE ITEM
-# ─────────────────────────────────────────
-
-def delete_item(item_id):
-    """
-    Deletes an item from the pantry by its ID.
-    Person B will call this when user clicks delete button.
-
-    Parameters:
-        item_id (int): The ID of the item to delete
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        DELETE FROM pantry_items WHERE id = ?
-    """, (item_id,))
-
+def delete_item(item_id, user_id=0):
+    conn = get_conn()
+    conn.execute("""
+        DELETE FROM pantry_items
+        WHERE id = ? AND user_id = ?
+    """, (item_id, user_id))
     conn.commit()
     conn.close()
-    print(f"✅ Item {item_id} deleted!")
 
-
-# ─────────────────────────────────────────
-# UPDATE ITEM
-# ─────────────────────────────────────────
-
-def update_item(item_id, name=None, quantity=None,
-                purchase_date=None, expiry_date=None, category=None):
-    """
-    Updates one or more fields of an existing pantry item.
-
-    Parameters:
-        item_id  (int) : ID of item to update
-        All other params are optional — only pass what you want to change
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # Build update query dynamically based on what's provided
-    fields = []
-    values = []
-
-    if name:
-        fields.append("name = ?")
-        values.append(name)
-    if quantity:
-        fields.append("quantity = ?")
-        values.append(quantity)
-    if purchase_date:
-        fields.append("purchase_date = ?")
-        values.append(purchase_date)
-    if expiry_date:
-        fields.append("expiry_date = ?")
-        values.append(expiry_date)
-    if category:
-        fields.append("category = ?")
-        values.append(category)
-
-    # Only run if there's something to update
-    if fields:
-        values.append(item_id)
-        query = f"UPDATE pantry_items SET {', '.join(fields)} WHERE id = ?"
-        cursor.execute(query, values)
-        conn.commit()
-        print(f"✅ Item {item_id} updated!")
-
-    conn.close()
-
-
-# ─────────────────────────────────────────
-# LOG USAGE HISTORY
-# ─────────────────────────────────────────
-
-def log_usage(item_name, was_wasted):
-    """
-    Logs whether an item was used or wasted.
-    Person B's dashboard will use this for the savings tracker.
-
-    Parameters:
-        item_name  (str)  : Name of the item
-        was_wasted (bool) : True if wasted, False if used
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO usage_history (item_name, used_date, was_wasted)
-        VALUES (?, ?, ?)
-    """, (item_name, str(date.today()), was_wasted))
-
+def update_item(item_id, user_id=0, name=None,
+                quantity=None, expiry_date=None, category=None):
+    conn = get_conn()
+    fields, vals = [], []
+    if name:        fields.append("name = ?");        vals.append(name)
+    if quantity:    fields.append("quantity = ?");    vals.append(quantity)
+    if expiry_date: fields.append("expiry_date = ?"); vals.append(expiry_date)
+    if category:    fields.append("category = ?");    vals.append(category)
+    if not fields:
+        conn.close(); return
+    vals += [item_id, user_id]
+    conn.execute(f"""
+        UPDATE pantry_items
+        SET {', '.join(fields)}
+        WHERE id = ? AND user_id = ?
+    """, vals)
     conn.commit()
     conn.close()
-    print(f"✅ Usage logged for '{item_name}'!")
-
 
 # ─────────────────────────────────────────
-# GET USAGE HISTORY
+# USAGE HISTORY — filtered by user_id
 # ─────────────────────────────────────────
 
-def get_usage_history():
-    """
-    Returns full usage history.
-    Person B will use this for the waste savings dashboard.
+def log_usage(item_name, was_wasted=False, user_id=0):
+    conn = get_conn()
+    from datetime import date
+    conn.execute("""
+        INSERT INTO usage_history
+            (user_id, item_name, used_date, was_wasted)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, item_name, str(date.today()), int(was_wasted)))
+    conn.commit()
+    conn.close()
 
-    Returns:
-        List of all usage history rows
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
+def get_usage_history(user_id=0):
+    conn = get_conn()
+    rows = conn.execute("""
         SELECT * FROM usage_history
-        ORDER BY used_date DESC
-    """)
-
-    history = cursor.fetchall()
+        WHERE user_id = ?
+        ORDER BY used_date DESC, id DESC
+        LIMIT 100
+    """, (user_id,)).fetchall()
     conn.close()
-    return history
-
+    return rows
 
 # ─────────────────────────────────────────
-# QUICK TEST — run this file directly to test
+# LOGIN HISTORY
 # ─────────────────────────────────────────
 
-if __name__ == "__main__":
-    # Step 1: Create tables
-    create_tables()
+def log_login(user_id, username, ip_address=""):
+    conn = get_conn()
+    from datetime import datetime
+    conn.execute("""
+        INSERT INTO login_history
+            (user_id, username, login_time, ip_address)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, username,
+          datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          ip_address))
+    conn.commit()
+    conn.close()
 
-    # Step 2: Add a test item
-    add_item(
-        name="Milk",
-        quantity="1 litre",
-        purchase_date="2026-03-10",
-        expiry_date="2026-03-15",
-        category="Dairy"
-    )
+def get_login_history(user_id=None, limit=50):
+    """
+    If user_id given → return that user's history only.
+    If user_id=None  → return ALL users (admin view).
+    """
+    conn = get_conn()
+    if user_id is not None:
+        rows = conn.execute("""
+            SELECT lh.*, u.full_name
+            FROM login_history lh
+            LEFT JOIN users u ON lh.user_id = u.id
+            WHERE lh.user_id = ?
+            ORDER BY lh.login_time DESC
+            LIMIT ?
+        """, (user_id, limit)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT lh.*, u.full_name
+            FROM login_history lh
+            LEFT JOIN users u ON lh.user_id = u.id
+            ORDER BY lh.login_time DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+    conn.close()
+    return rows
 
-    # Step 3: View all items
-    print("\n📦 All Pantry Items:")
-    for item in get_all_items():
-        print(dict(item))
-
-    # Step 4: Check expiring items
-    print("\n⚠️ Items expiring in 7 days:")
-    for item in get_expiring_items():
-        print(dict(item))
+def get_all_login_stats():
+    """Admin: total logins per user."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT
+            lh.username,
+            u.full_name,
+            COUNT(*) as total_logins,
+            MAX(lh.login_time) as last_login,
+            MIN(lh.login_time) as first_login
+        FROM login_history lh
+        LEFT JOIN users u ON lh.user_id = u.id
+        GROUP BY lh.username
+        ORDER BY total_logins DESC
+    """).fetchall()
+    conn.close()
+    return rows

@@ -32,20 +32,19 @@ export const authAPI = {
 
 // ── PANTRY ──
 export const pantryAPI = {
-  getAll:     ()         => api.get('/pantry/items'),
-  getExpiring:(days)     => api.get(`/pantry/expiring/${days}`),
-  add:        (data)     => api.post('/pantry/items', data),
-  update:     (id, data) => api.put(`/pantry/items/${id}`, data),
-  delete:     (id, wasted=true) =>
-                api.delete(`/pantry/items/${id}`, { data:{ wasted } }),
-  markUsed:   (id)       => api.post(`/pantry/items/${id}/use`),
-  getHistory: ()         => api.get('/pantry/history'),
+  getAll:     ()              => api.get('/pantry/items'),
+  getExpiring:(days)          => api.get(`/pantry/expiring/${days}`),
+  add:        (data)          => api.post('/pantry/items', data),
+  update:     (id, data)      => api.put(`/pantry/items/${id}`, data),
+  delete:     (id, wasted=true) => api.delete(`/pantry/items/${id}`, { data:{ wasted } }),
+  markUsed:   (id)            => api.post(`/pantry/items/${id}/use`),
+  getHistory: ()              => api.get('/pantry/history'),
 }
 
 // ── AI ──
 export const aiAPI = {
-  getRecipes: (prefs)           => api.post('/ai/recipes',{ preferences: prefs }),
-  chat:       (message, history)=> api.post('/ai/chat',{ message, history }),
+  getRecipes: (prefs)            => api.post('/ai/recipes', { preferences: prefs }),
+  chat:       (message, history) => api.post('/ai/chat', { message, history }),
 }
 
 // ── IMAGE ──
@@ -58,10 +57,17 @@ export const weatherAPI = {
   get: () => api.get('/weather'),
 }
 
-// ── USERS ──
+// ── USER ──
 export const usersAPI = {
-  list:           ()     => api.get('/users'),
   changePassword: (data) => api.put('/users/password', data),
+  myLoginHistory: ()     => api.get('/me/login-history'),
+}
+
+// ── ADMIN (admin role only) ──
+export const adminAPI = {
+  getUsers:        ()          => api.get('/admin/users'),
+  getLoginHistory: (limit=100) => api.get(`/admin/login-history?limit=${limit}`),
+  getLoginStats:   ()          => api.get('/admin/login-stats'),
 }
 
 export default api

@@ -9,6 +9,7 @@ import AddItem   from './pages/AddItem'
 import Recipes   from './pages/Recipes'
 import Dashboard from './pages/Dashboard'
 import Settings  from './pages/Settings'
+import Admin     from './pages/Admin'
 
 export const AuthCtx  = createContext(null)
 export const ThemeCtx = createContext(null)
@@ -31,7 +32,7 @@ function App() {
     else      document.documentElement.classList.remove('dark')
   }, [])
 
-  // Instant theme toggle — injects a no-transition style for one frame
+  // Instant theme toggle — no flash
   const setDark = (val) => {
     const style = document.createElement('style')
     style.innerHTML = `*, *::before, *::after {
@@ -63,7 +64,10 @@ function App() {
   }
 
   const ProtectedRoute = ({ children }) =>
-    user ? children : <Navigate to="/login" replace />
+    user ? children : <Navigate to="/login" replace/>
+
+  const AdminRoute = ({ children }) =>
+    user?.role === 'admin' ? children : <Navigate to="/" replace/>
 
   return (
     <AuthCtx.Provider value={{ user, login, logout }}>
@@ -71,17 +75,20 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={
-              user ? <Navigate to="/" replace /> : <Login />
+              user ? <Navigate to="/" replace/> : <Login/>
             }/>
             <Route path="/" element={
-              <ProtectedRoute><Layout /></ProtectedRoute>
+              <ProtectedRoute><Layout/></ProtectedRoute>
             }>
-              <Route index            element={<Home />}      />
-              <Route path="pantry"    element={<Pantry />}    />
-              <Route path="add"       element={<AddItem />}   />
-              <Route path="recipes"   element={<Recipes />}   />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="settings"  element={<Settings />}  />
+              <Route index              element={<Home/>}      />
+              <Route path="pantry"      element={<Pantry/>}    />
+              <Route path="add"         element={<AddItem/>}   />
+              <Route path="recipes"     element={<Recipes/>}   />
+              <Route path="dashboard"   element={<Dashboard/>} />
+              <Route path="settings"    element={<Settings/>}  />
+              <Route path="admin"       element={
+                <AdminRoute><Admin/></AdminRoute>
+              }/>
             </Route>
           </Routes>
         </BrowserRouter>
