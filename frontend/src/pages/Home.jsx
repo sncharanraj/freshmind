@@ -3,8 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
 import { pantryAPI, aiAPI, weatherAPI } from '../api/client'
-import { Package, AlertTriangle, CheckCircle, Trash2,
-         PlusCircle, Bot, BarChart2, ChevronRight } from 'lucide-react'
+import { Package, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react'
 
 const FOOD_EMOJIS = {
   Dairy:"🥛", Vegetables:"🥦", Fruits:"🍎",
@@ -27,7 +26,7 @@ const TIPS = [
 
 const FOOD_RAIN = ["🥦","🍎","🥛","🧅","🍗","🥚","🍞","🥕","🧄","🍋","🥬","🍅"]
 
-function CountUp({ target, duration = 1200 }) {
+function CountUp({ target, duration = 1000 }) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     if (!target) { setCount(0); return }
@@ -47,10 +46,10 @@ function getExpInfo(expiry_str) {
   const today  = new Date(); today.setHours(0,0,0,0)
   const expiry = new Date(expiry_str)
   const days   = Math.round((expiry - today) / 86400000)
-  if (days < 0)  return { label:`EXPIRED ${Math.abs(days)}d ago!`, color:"text-red-500",    days }
-  if (days === 0) return { label:"Expires TODAY!",                  color:"text-red-500",    days }
-  if (days <= 3)  return { label:`In ${days}d ⚠️`,                 color:"text-orange-500", days }
-  return              { label:`${days}d left`,                      color:"text-green-500",  days }
+  if (days < 0)   return { label:`EXPIRED ${Math.abs(days)}d ago!`, days }
+  if (days === 0) return { label:"Expires TODAY!",                   days }
+  if (days <= 3)  return { label:`In ${days}d ⚠️`,                  days }
+  return              { label:`${days}d left`,                        days }
 }
 
 export default function Home() {
@@ -67,29 +66,28 @@ export default function Home() {
   const [aiTips,   setAiTips]   = useState('')
   const [aiLoad,   setAiLoad]   = useState(false)
   const [loading,  setLoading]  = useState(true)
-  const tipRef = useRef()
 
   useEffect(() => {
+    // Load all data in parallel — fast!
     Promise.all([
       pantryAPI.getAll(),
       pantryAPI.getExpiring(7),
       pantryAPI.getExpiring(3),
       pantryAPI.getHistory(),
-      weatherAPI.get(),
+      weatherAPI.get().catch(() => ({ data: null })),
     ]).then(([a, e, c, h, w]) => {
-      setItems(a.data.items || [])
+      setItems(a.data.items    || [])
       setExpiring(e.data.items || [])
       setCritical(c.data.items || [])
       setHistory(h.data.history || [])
-      setWeather(w.data)
+      if (w.data) setWeather(w.data)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
 
   // Auto-advance tips every 8s
   useEffect(() => {
-    const t = setInterval(() =>
-      setTipIdx(i => (i + 1) % TIPS.length), 8000)
+    const t = setInterval(() => setTipIdx(i => (i+1) % TIPS.length), 8000)
     return () => clearInterval(t)
   }, [])
 
@@ -102,9 +100,9 @@ export default function Home() {
   const getAiTips = async () => {
     setAiLoad(true); setAiTips('')
     try {
-      const names = items.slice(0,10).map(i => i.name).join(', ') || 'empty pantry'
-      const res   = await aiAPI.chat(
-        `Give 3 quick storage/cooking tips for: ${names}. Format: emoji + tip. Each under 2 sentences.`,
+      const names = items.slice(0,10).map(i=>i.name).join(', ') || 'empty pantry'
+      const res = await aiAPI.chat(
+        `Give quick storage/cooking tips for: ${names}. Format: emoji + tip. Each under 2 sentences.(don't mention this line)`,
         []
       )
       setAiTips(res.data.response)
@@ -113,10 +111,10 @@ export default function Home() {
   }
 
   const METRICS = [
-    { label:"Total Items",      value:items.length,    color:"text-primary",  bg:"bg-primary/10",  icon:Package,       nav:null        },
-    { label:"Expiring This Week",value:expiring.length, color:"text-pink-500", bg:"bg-pink-50",     icon:AlertTriangle, nav:"/pantry"   },
-    { label:"Items Saved",      value:saved.length,    color:"text-success",  bg:"bg-green-50",    icon:CheckCircle,   nav:null        },
-    { label:"Items Wasted",     value:wasted.length,   color:"text-danger",   bg:"bg-red-50",      icon:Trash2,        nav:null        },
+    { label:"Total Items",       value:items.length,    color:"#667eea", bg:"bg-indigo-50 dark:bg-indigo-900/20",  icon:Package,       nav:"/pantry"   },
+    { label:"Expiring This Week",value:expiring.length, color:"#f59e0b", bg:"bg-amber-50 dark:bg-amber-900/20",   icon:AlertTriangle, nav:"/pantry"   },
+    { label:"Items Saved",       value:saved.length,    color:"#10b981", bg:"bg-emerald-50 dark:bg-emerald-900/20",icon:CheckCircle,   nav:null        },
+    { label:"Items Wasted",      value:wasted.length,   color:"#ef4444", bg:"bg-red-50 dark:bg-red-900/20",       icon:Trash2,        nav:null        },
   ]
 
   const ACTIONS = [
@@ -127,52 +125,43 @@ export default function Home() {
   ]
 
   if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-4xl animate-bounce">🥗</div>
+    <div className="flex flex-col items-center justify-center h-64 gap-3">
+      <div className="text-5xl animate-bounce">🥗</div>
+      <p className="text-sm text-gray-400 animate-pulse">Loading your pantry...</p>
     </div>
   )
 
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* ── Hero Banner ── */}
-      <div className="relative bg-gradient-to-r from-green-800 to-emerald-600
-                      rounded-2xl p-6 overflow-hidden min-h-[110px]">
+      {/* ── Hero Banner — indigo/purple instead of green ── */}
+      <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-violet-600
+                      rounded-2xl p-6 overflow-hidden min-h-[110px]
+                      shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
         {/* Food rain */}
         {FOOD_RAIN.map((f, i) => (
-          <div key={i} className="food-drop text-lg"
+          <div key={i} className="food-drop text-lg opacity-20"
                style={{
-                 left:`${5+i*8}%`, top:'-30px',
-                 animationDuration:`${3+i*0.3}s`,
+                 left:`${4+i*8}%`, top:'-30px',
+                 animationDuration:`${3.5+i*0.3}s`,
                  animationDelay:`${i*0.2}s`
                }}>{f}</div>
         ))}
+        <div className="absolute right-6 top-1/2 -translate-y-1/2 text-8xl opacity-10">🥗</div>
 
-        {/* Big leaf bg */}
-        <div className="absolute right-8 top-1/2 -translate-y-1/2
-                        text-7xl opacity-10 pointer-events-none">🥗</div>
-
-        {/* Content */}
         <div className="relative z-10">
           <p className="text-xs font-semibold uppercase tracking-widest
-                        text-green-200 mb-1">
-            {today}
-          </p>
-          <h1 className="text-2xl font-bold text-white">
-            👋 Hello, {fname}!
-          </h1>
-          <p className="text-green-100 text-sm mt-1">
-            Here's your pantry overview
-          </p>
+                        text-indigo-200 mb-1">{today}</p>
+          <h1 className="text-2xl font-bold text-white">👋 Hello, {fname}!</h1>
+          <p className="text-indigo-100 text-sm mt-1">Here's your pantry overview</p>
         </div>
 
         {/* Weather chip */}
         {weather && (
-          <div className="absolute top-4 right-4
-                          bg-white/20 backdrop-blur-md
-                          rounded-xl px-3 py-1.5 text-white text-sm">
+          <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md
+                          rounded-xl px-3 py-1.5 text-white text-xs font-medium">
             {parseInt(weather.temp) > 30 ? '☀️' : '🌤️'}
-            {' '}{weather.temp}°C · {weather.desc}
+            {' '}{weather.temp}°C &nbsp;·&nbsp; {weather.desc}
           </div>
         )}
       </div>
@@ -183,17 +172,22 @@ export default function Home() {
           <div key={label}
                onClick={() => nav && navigate(nav)}
                className={`card flex flex-col items-center p-5
-                           ${nav ? 'cursor-pointer hover:-translate-y-2 hover:shadow-xl' : 'hover:-translate-y-1'}
-                           transition-all duration-200`}>
-            <div className={`${bg} p-3 rounded-full mb-3`}>
-              <Icon size={22} className={color} />
+                           ${nav ? 'cursor-pointer hover:shadow-xl' : ''}
+                           hover:-translate-y-1.5 transition-all duration-200`}>
+            <div className={`${bg} p-3 rounded-xl mb-3`}>
+              <Icon size={20} style={{ color }}/>
             </div>
-            <p className={`text-3xl font-bold ${color}`}>
-              <CountUp target={value} />
+            <p className="text-3xl font-bold" style={{ color }}>
+              <CountUp target={value}/>
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center leading-tight">
               {label}
             </p>
+            {nav && (
+              <span className="text-xs mt-1.5 opacity-60" style={{ color }}>
+                View →
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -202,59 +196,53 @@ export default function Home() {
       {critical.length > 0 && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200
                         dark:border-red-800 rounded-xl p-4">
-          <p className="font-semibold text-red-600 mb-2">
+          <p className="font-semibold text-red-600 mb-2 text-sm">
             🚨 Critical — Use these items immediately!
           </p>
           {critical.map(item => {
             const { label } = getExpInfo(item.expiry_date)
             return (
-              <div key={item.id}
-                   className="flex items-center gap-2 text-sm
-                              text-red-700 dark:text-red-300 mt-1">
-                <span>⚠️</span>
-                <b>{item.name}</b>
-                <span className="text-gray-500">({item.category})</span>
+              <div key={item.id} className="flex items-center gap-2 text-sm
+                                            text-red-700 dark:text-red-300 mt-1">
+                <span>⚠️ <b>{item.name}</b></span>
+                <span className="text-gray-400">({item.category})</span>
                 <span>— {label}</span>
               </div>
             )
           })}
         </div>
       )}
-
       {!critical.length && expiring.length > 0 && (
-        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200
-                        dark:border-orange-800 rounded-xl px-4 py-3 text-sm
-                        text-orange-700 dark:text-orange-300">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200
+                        dark:border-amber-800 rounded-xl px-4 py-3 text-sm
+                        text-amber-700 dark:text-amber-300">
           ⚠️ <b>{expiring.length}</b> item(s) expiring this week!
         </div>
       )}
-
       {!expiring.length && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200
-                        dark:border-green-800 rounded-xl px-4 py-3 text-sm
-                        text-green-700 dark:text-green-300">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200
+                        dark:border-emerald-800 rounded-xl px-4 py-3 text-sm
+                        text-emerald-700 dark:text-emerald-300">
           ✅ Everything is fresh!
         </div>
       )}
 
       {/* ── Quick Actions ── */}
       <div>
-        <h2 className="font-bold text-gray-800 dark:text-white mb-3">
-          ⚡ Quick Actions
-        </h2>
+        <h2 className="font-bold text-gray-800 dark:text-white mb-3 text-sm uppercase
+                       tracking-wide">⚡ Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {ACTIONS.map(({ icon, label, desc, to }) => (
             <button key={to} onClick={() => navigate(to)}
                     className="card flex flex-col items-center py-6
-                               hover:-translate-y-2 hover:border-primary
+                               hover:-translate-y-2 hover:border-indigo-300
+                               dark:hover:border-indigo-700
                                hover:shadow-xl transition-all duration-200
                                cursor-pointer group">
-              <div className="text-4xl mb-2 group-hover:scale-110
-                              transition-transform duration-200">
+              <div className="text-4xl mb-2 group-hover:scale-110 transition-transform">
                 {icon}
               </div>
-              <p className="font-semibold text-sm text-gray-800
-                            dark:text-white">{label}</p>
+              <p className="font-semibold text-sm text-gray-800 dark:text-white">{label}</p>
               <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
             </button>
           ))}
@@ -264,21 +252,34 @@ export default function Home() {
       {/* ── Cooking Tips ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-gray-800 dark:text-white">
+          <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase tracking-wide">
             🍳 Cooking Tips of the Day
           </h2>
           <button onClick={getAiTips} disabled={aiLoad}
-                  className="btn-ghost text-sm flex items-center gap-1.5
+                  className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5
                              disabled:opacity-60">
-            {aiLoad ? '⏳ Loading...' : '✨ AI Tips'}
+            {aiLoad
+              ? <><div className="w-3 h-3 border border-gray-400 border-t-primary
+                                  rounded-full animate-spin"/>Getting tips...</>
+              : '✨ Get AI Tips'
+            }
           </button>
         </div>
 
+        {/* AI Tips result — first line highlighted */}
         {aiTips && (
-          <div className="bg-primary/5 border border-primary/20
-                          rounded-xl p-4 mb-3 text-sm
-                          text-gray-700 dark:text-gray-300 whitespace-pre-line">
-            💡 {aiTips}
+          <div className="card mb-3 border-indigo-200 dark:border-indigo-800
+                          bg-indigo-50 dark:bg-indigo-900/20">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">🤖</span>
+              <span className="text-xs font-bold uppercase tracking-wider
+                               text-indigo-600 dark:text-indigo-400">
+                AI Tips for Your Pantry
+              </span>
+            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">
+              {aiTips}
+            </p>
           </div>
         )}
 
@@ -291,16 +292,13 @@ export default function Home() {
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {TIPS[tipIdx].x}
           </p>
-
-          {/* Dot indicators */}
           <div className="flex gap-1.5 mt-4">
             {TIPS.map((_, i) => (
               <button key={i} onClick={() => setTipIdx(i)}
                       className={`h-1.5 rounded-full transition-all duration-300
-                                  ${i === tipIdx
-                                    ? 'bg-primary w-5'
-                                    : 'bg-gray-200 dark:bg-dark-border w-1.5'
-                                  }`}/>
+                                  ${i===tipIdx
+                                    ? 'bg-indigo-500 w-5'
+                                    : 'bg-gray-200 dark:bg-dark-border w-1.5'}`}/>
             ))}
           </div>
         </div>
@@ -308,29 +306,25 @@ export default function Home() {
 
       {/* ── Recent Activity ── */}
       <div>
-        <h2 className="font-bold text-gray-800 dark:text-white mb-3">
+        <h2 className="font-bold text-gray-800 dark:text-white mb-3 text-sm uppercase tracking-wide">
           🕐 Recent Activity
         </h2>
         {history.length === 0 ? (
-          <div className="card text-center text-gray-400 py-8">
+          <div className="card text-center text-gray-400 py-8 text-sm">
             No activity yet — start using your pantry!
           </div>
         ) : (
           <div className="space-y-2">
-            {history.slice(0, 5).map((h, i) => {
+            {history.slice(0,5).map((h, i) => {
               const used  = !h.was_wasted
-              const color = used ? "border-success" : "border-danger"
               return (
                 <div key={i}
-                     className={`flex items-center gap-3 p-3
-                                 bg-white dark:bg-dark-card
-                                 rounded-xl border-l-4 ${color}
-                                 shadow-sm`}>
-                  <span className="text-lg">{used ? '✅' : '🗑️'}</span>
+                     className={`flex items-center gap-3 p-3 bg-white dark:bg-dark-card
+                                 rounded-xl shadow-sm border-l-4
+                                 ${used ? 'border-emerald-400' : 'border-red-400'}`}>
+                  <span>{used ? '✅' : '🗑️'}</span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">
-                    <b>{h.item_name}</b>
-                    {' — '}{used ? 'Used' : 'Wasted'}
-                    {' on '}{h.used_date}
+                    <b>{h.item_name}</b>{' — '}{used ? 'Used' : 'Wasted'}{' on '}{h.used_date}
                   </span>
                 </div>
               )
