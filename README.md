@@ -1,6 +1,67 @@
-# 🥗 FreshMind — Flask + React
+# 🥗 FreshMind — AI-Powered Smart Pantry Assistant
 
-AI-Powered Smart Pantry App — **Python Backend + React Frontend**
+> Reduce food waste, save money, and cook smarter with AI-powered pantry management.
+
+![FreshMind](https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=1200&auto=format&fit=crop&q=80)
+
+---
+
+## 📌 Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [API Endpoints](#api-endpoints)
+- [Team](#team)
+
+---
+
+## 🧠 Overview
+
+FreshMind is a full-stack web application that helps you manage your pantry smartly. It tracks expiry dates, suggests AI-powered recipes from items you already have, and helps reduce food waste — all with a clean, modern UI.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🔐 Auth | Login, Register, JWT-based sessions |
+| 📦 Pantry Management | Add, edit, delete, mark items as used |
+| 🔔 Expiry Alerts | Real-time notifications for items expiring soon |
+| 🤖 AI Recipes | Groq-powered recipe suggestions from your pantry |
+| 💬 AI Chat | Ask the AI anything about cooking |
+| 📊 Dashboard | Charts for category breakdown, waste tracking |
+| 🖼️ Image Fetcher | Auto-fetch food images from Wikipedia |
+| 📷 Camera Upload | Add item images via camera or local file |
+| 🌙 Dark Mode | Full dark/light theme support |
+| 👑 Admin Panel | Login history, user stats (admin only) |
+| 🌤️ Weather | Live weather with pantry storage tips |
+| 👥 Multi-user | Each user sees only their own data |
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+- **Python 3.12**
+- **Flask** — REST API
+- **SQLite** — Database
+- **JWT** — Authentication
+- **Groq API** — AI (llama-3.1-8b-instant)
+- **Flask-CORS** — Cross-origin support
+
+### Frontend
+- **React 18**
+- **Vite** — Build tool
+- **Tailwind CSS** — Styling
+- **React Router v6** — Navigation
+- **Axios** — API calls
+- **Recharts** — Dashboard charts
+- **Lucide React** — Icons
 
 ---
 
@@ -9,87 +70,95 @@ AI-Powered Smart Pantry App — **Python Backend + React Frontend**
 ```
 freshmind/
 ├── backend/
-│   ├── app.py              ← Flask API (all routes)
-│   ├── database.py         ← SQLite database (copy from root)
-│   ├── auth.py             ← Auth logic (copy from root)
-│   ├── ai_recipes.py       ← Groq AI (copy from root)
-│   ├── image_fetcher.py    ← Wikipedia images (copy from root)
-│   ├── notifier.py         ← Expiry notifier (copy from root)
-│   ├── requirements.txt    ← Python deps
-│   └── .env                ← API keys
+│   ├── app.py              # Flask API routes
+│   ├── database.py         # SQLite CRUD operations
+│   ├── auth.py             # User authentication
+│   ├── ai_recipes.py       # Groq AI integration
+│   ├── image_fetcher.py    # Wikipedia image fetcher
+│   ├── notifier.py         # Expiry notifications
+│   └── .env                # Environment variables
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx         ← Router + Auth context
-│   │   ├── pages/
-│   │   │   ├── Login.jsx
-│   │   │   ├── Home.jsx
-│   │   │   ├── Pantry.jsx
-│   │   │   ├── AddItem.jsx
-│   │   │   ├── Recipes.jsx
-│   │   │   ├── Dashboard.jsx
-│   │   │   └── Settings.jsx
-│   │   ├── components/
-│   │   │   ├── Layout.jsx  ← Sidebar + topbar
-│   │   │   └── NotifBell.jsx ← Notification popup
+│   │   ├── App.jsx          # Root + routing
+│   │   ├── main.jsx         # Entry point
+│   │   ├── index.css        # Global styles
 │   │   ├── api/
-│   │   │   └── client.js   ← All API calls (Axios)
-│   │   └── index.css       ← Tailwind + custom styles
+│   │   │   └── client.js    # Axios API client
+│   │   ├── components/
+│   │   │   ├── Layout.jsx   # Sidebar + topbar
+│   │   │   └── NotifBell.jsx# Notification popup
+│   │   └── pages/
+│   │       ├── Login.jsx    # Login + Register
+│   │       ├── Home.jsx     # Dashboard home
+│   │       ├── Pantry.jsx   # Pantry management
+│   │       ├── AddItem.jsx  # Add new item
+│   │       ├── Recipes.jsx  # AI recipes + chat
+│   │       ├── Dashboard.jsx# Analytics charts
+│   │       ├── Settings.jsx # Profile + password
+│   │       └── Admin.jsx    # Admin panel
 │   ├── package.json
 │   ├── vite.config.js
-│   └── tailwind.config.js
+│   ├── tailwind.config.js
+│   └── index.html
 │
-├── start.sh                ← One command to start everything
+├── .gitignore
 └── README.md
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Step 1 — Copy your Python files to backend/
+### Prerequisites
 
-```bash
-cp database.py      backend/
-cp auth.py          backend/
-cp ai_recipes.py    backend/
-cp image_fetcher.py backend/
-cp notifier.py      backend/
-cp .env             backend/
-cp freshmind.db     backend/   # if exists
-```
+- Python 3.12+
+- Node.js 18+
+- Groq API key (free at [console.groq.com](https://console.groq.com))
 
-### Step 2 — Set up backend
+### 1. Clone the repo
 
 ```bash
-source venv/bin/activate   # or your venv path
-pip install -r backend/requirements.txt
+git clone https://github.com/sncharanraj/freshmind.git
+cd freshmind
 ```
 
-### Step 3 — Set up frontend
+### 2. Setup Backend
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate        # Linux/Mac
+venv\Scripts\activate           # Windows
+
+# Install dependencies
+pip install flask flask-cors pyjwt python-dotenv \
+            requests groq pillow pyzbar
+
+# Create .env file
+cp .env.example .env
+# Add your GROQ_API_KEY to .env
+
+# Run backend
+cd backend
+python app.py
+# Runs on http://localhost:5000
+```
+
+### 3. Setup Frontend
 
 ```bash
 cd frontend
+
+# Install dependencies
 npm install
-cd ..
+
+# Run frontend
+npm run dev
+# Runs on http://localhost:5173
 ```
 
-### Step 4 — Run everything
-
-```bash
-# Option A: One command (recommended)
-chmod +x start.sh
-./start.sh
-
-# Option B: Manual (two terminals)
-# Terminal 1:
-cd backend && python app.py
-
-# Terminal 2:
-cd frontend && npm run dev
-```
-
-### Step 5 — Open browser
+### 4. Open the app
 
 ```
 http://localhost:5173
@@ -97,77 +166,77 @@ http://localhost:5173
 
 ---
 
-## 🔑 Environment Variables
+## 🔐 Demo Accounts
 
-Create `backend/.env`:
+| Role | Username | Password |
+|---|---|---|
+| 👑 Admin | `admin` | `admin123` |
+| 👤 Person A | `person_a` | `persona123` |
+| 👤 Person B | `person_b` | `personb123` |
+
+---
+
+## 🌍 Environment Variables
+
+Create a `.env` file in the `backend/` folder:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
-JWT_SECRET=freshmind_secret_2024
+JWT_SECRET=your_jwt_secret_here
 ```
 
----
-
-## 🌐 API Endpoints
-
-| Method | Route                        | Description          |
-|--------|------------------------------|----------------------|
-| POST   | /api/auth/login              | Login                |
-| POST   | /api/auth/register           | Register             |
-| GET    | /api/pantry/items            | Get all items        |
-| POST   | /api/pantry/items            | Add item             |
-| PUT    | /api/pantry/items/:id        | Update item          |
-| DELETE | /api/pantry/items/:id        | Delete item          |
-| POST   | /api/pantry/items/:id/use    | Mark as used         |
-| GET    | /api/pantry/expiring/:days   | Get expiring items   |
-| GET    | /api/pantry/history          | Usage history        |
-| POST   | /api/ai/recipes              | Generate recipes     |
-| POST   | /api/ai/chat                 | AI chat              |
-| GET    | /api/image/fetch?name=...    | Fetch food image     |
-| GET    | /api/weather                 | Weather data         |
-| GET    | /api/users                   | All users (admin)    |
-| PUT    | /api/users/password          | Change password      |
+Get your free Groq API key at [console.groq.com](https://console.groq.com)
 
 ---
 
-## 🛠️ Tech Stack
+## 📡 API Endpoints
 
-| Layer    | Technology            |
-|----------|-----------------------|
-| Backend  | Flask + Python        |
-| Auth     | JWT tokens            |
-| Database | SQLite (same as before)|
-| AI       | Groq (llama-3.1)      |
-| Frontend | React 18 + Vite       |
-| Styling  | Tailwind CSS          |
-| Charts   | Recharts              |
-| Icons    | Lucide React          |
-| HTTP     | Axios                 |
+### Auth
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/auth/login` | Login |
+| POST | `/api/auth/register` | Register |
+| GET | `/api/auth/me` | Current user |
 
----
+### Pantry
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/pantry/items` | Get all items |
+| POST | `/api/pantry/items` | Add item |
+| PUT | `/api/pantry/items/:id` | Update item |
+| DELETE | `/api/pantry/items/:id` | Delete item |
+| POST | `/api/pantry/items/:id/use` | Mark as used |
+| GET | `/api/pantry/expiring/:days` | Get expiring items |
+| GET | `/api/pantry/history` | Usage history |
 
-## 👥 Demo Credentials
+### AI
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/ai/recipes` | Generate recipes |
+| POST | `/api/ai/chat` | Chat with AI |
 
-| Username | Password    | Role  |
-|----------|-------------|-------|
-| admin    | admin123    | Admin |
-| person_a | persona123  | Member|
-| person_b | personb123  | Member|
-
----
-
-## 🔄 Differences from Streamlit
-
-| Feature          | Streamlit (old)     | Flask+React (new)    |
-|------------------|---------------------|----------------------|
-| Speed            | Reruns entire script| Only updates changed |
-| Popups/Modals    | Hacky iframes       | Native React         |
-| Dark mode        | CSS tricks          | Tailwind `dark:` class|
-| Animations       | Limited             | Full CSS/JS control  |
-| Notifications    | Broken position:fixed| Perfect dropdown    |
-| Scalability      | Single user         | Multi-user ready     |
-| Mobile           | Poor                | Responsive           |
+### Admin (admin only)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/admin/users` | All users |
+| GET | `/api/admin/login-history` | Login history |
+| GET | `/api/admin/login-stats` | Login stats per user |
 
 ---
 
-Built with ❤️ Python & React
+## 👥 Team
+
+| Role | Name | GitHub |
+|---|---|---|
+| 🔧 Backend | S N Charanraj | [@sncharanraj](https://github.com/sncharanraj) |
+| 🎨 Frontend | Sudeep K | [@Sudeep-25](https://github.com/Sudeep-25) |
+
+---
+
+## 📄 License
+
+This project is for educational purposes.
+
+---
+
+<p align="center">Built with ❤️ using Python & React</p>

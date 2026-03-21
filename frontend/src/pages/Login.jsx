@@ -178,10 +178,6 @@ export default function Login() {
                       </span>
                     : 'Sign In →'}
                 </button>
-                <p className="text-center text-xs text-gray-400 pt-1">
-                  Demo: <b className="text-gray-600 dark:text-gray-300">admin</b>{' / '}
-                  <b className="text-gray-600 dark:text-gray-300">admin123</b>
-                </p>
               </form>
             )}
 
