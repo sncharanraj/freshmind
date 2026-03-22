@@ -149,26 +149,32 @@ export default function Home() {
         ))}
         <div className="absolute right-6 top-1/2 -translate-y-1/2 text-8xl opacity-10">🥗</div>
 
-        <div className="relative z-10">
-          {/* Date + weather inline — wraps on mobile, no overlap */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
-            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-200">
-              {today}
-            </p>
-            {weather && (
-              <span className="bg-white/20 backdrop-blur-md rounded-lg
-                               px-2 py-0.5 text-white text-xs font-medium
-                               flex items-center gap-1">
-                {parseInt(weather.temp) > 30 ? '☀️' : '🌤️'}
-                {weather.temp}°C · {weather.desc}
-              </span>
-            )}
-          </div>
+        <div className="relative z-10 pr-16 sm:pr-24">
+          <p className="text-xs font-semibold uppercase tracking-widest
+                        text-indigo-200 mb-1">{today}</p>
           <h1 className="text-xl sm:text-2xl font-bold text-white">
             👋 Hello, {fname}!
           </h1>
           <p className="text-indigo-100 text-sm mt-1">Here's your pantry overview</p>
         </div>
+
+        {/* Weather chip — top right, stacked vertically */}
+        {weather && (
+          <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md
+                          rounded-xl px-3 py-2 text-white text-center
+                          flex flex-col items-center gap-0.5 min-w-[64px]">
+            <span className="text-lg leading-none">
+              {parseInt(weather.temp) > 30 ? '☀️' : '🌤️'}
+            </span>
+            <span className="text-sm font-bold leading-none">
+              {weather.temp}°C
+            </span>
+            <span className="text-[10px] text-white/80 leading-none max-w-[72px]
+                             truncate">
+              {weather.desc}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Metric Cards ── */}
