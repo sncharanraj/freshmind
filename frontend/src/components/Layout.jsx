@@ -107,12 +107,6 @@ export default function Layout() {
       <div className="px-3 pb-4 space-y-2 flex-shrink-0
                       border-t border-gray-100 dark:border-dark-border pt-3">
 
-        <button onClick={() => setDark(!dark)} className="sidebar-btn w-full">
-          {dark
-            ? <><Sun size={17}/><span>Light Mode</span></>
-            : <><Moon size={17}/><span>Dark Mode</span></>
-          }
-        </button>
 
         {/* User card */}
         <div className="flex items-center gap-3 px-3 py-2
