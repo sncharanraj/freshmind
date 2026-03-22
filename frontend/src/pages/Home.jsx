@@ -102,7 +102,7 @@ export default function Home() {
     try {
       const names = items.slice(0,10).map(i=>i.name).join(', ') || 'empty pantry'
       const res = await aiAPI.chat(
-        `Give quick storage/cooking tips for: ${names}. Format: emoji + tip. Each under 2 sentences.(don't mention this line)`,
+        `Give 3 quick storage/cooking tips for: ${names}. Format: emoji + tip. Each under 2 sentences.`,
         []
       )
       setAiTips(res.data.response)
@@ -150,20 +150,25 @@ export default function Home() {
         <div className="absolute right-6 top-1/2 -translate-y-1/2 text-8xl opacity-10">🥗</div>
 
         <div className="relative z-10">
-          <p className="text-xs font-semibold uppercase tracking-widest
-                        text-indigo-200 mb-1">{today}</p>
-          <h1 className="text-2xl font-bold text-white">👋 Hello, {fname}!</h1>
+          {/* Date + weather inline — wraps on mobile, no overlap */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-200">
+              {today}
+            </p>
+            {weather && (
+              <span className="bg-white/20 backdrop-blur-md rounded-lg
+                               px-2 py-0.5 text-white text-xs font-medium
+                               flex items-center gap-1">
+                {parseInt(weather.temp) > 30 ? '☀️' : '🌤️'}
+                {weather.temp}°C · {weather.desc}
+              </span>
+            )}
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">
+            👋 Hello, {fname}!
+          </h1>
           <p className="text-indigo-100 text-sm mt-1">Here's your pantry overview</p>
         </div>
-
-        {/* Weather chip */}
-        {weather && (
-          <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md
-                          rounded-xl px-3 py-1.5 text-white text-xs font-medium">
-            {parseInt(weather.temp) > 30 ? '☀️' : '🌤️'}
-            {' '}{weather.temp}°C &nbsp;·&nbsp; {weather.desc}
-          </div>
-        )}
       </div>
 
       {/* ── Metric Cards ── */}
