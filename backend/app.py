@@ -24,7 +24,11 @@ from image_fetcher import get_food_image
 
 load_dotenv()
 app  = Flask(__name__)
-CORS(app, origins=["http://localhost:5173","http://localhost:3000"])
+CORS(app, origins=[
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://freshmindforyou.netlify.app",
+])
 SECRET = os.getenv("JWT_SECRET","freshmind_secret_2024")
 
 create_tables()
